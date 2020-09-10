@@ -12,7 +12,7 @@ import { parseToBoolean } from '../lib/utils';
 // data for the user's locale for React Intl to work in the browser.
 export default class IntlDocument extends Document {
   static async getInitialProps(ctx) {
-    const { locale, localeDataScript, url } = ctx.req;
+    const { locale, localeDataScript, url, noStyledJsx } = ctx.req;
 
     const sheet = new ServerStyleSheet();
     const originalRenderPage = ctx.renderPage;
@@ -32,17 +32,20 @@ export default class IntlDocument extends Document {
     }
 
     try {
-      // The new recommended way to process Styled Components
-      // unfortunately not compatible with styled-jsx as is
-      // ctx.renderPage = () =>
-      //   originalRenderPage({
-      //     enhanceApp: App => props => sheet.collectStyles(<App {...props} />)
-      //   })
+      let page, styledJsxStyles;
+      if (noStyledJsx) {
+        // The new recommended way to process Styled Components
+        // unfortunately not compatible with styled-jsx as is
+        ctx.renderPage = () =>
+          originalRenderPage({
+            enhanceApp: App => props => sheet.collectStyles(<App {...props} />),
+          });
+      } else {
+        // The old recommended way to process Styled Components
+        page = originalRenderPage(App => props => sheet.collectStyles(<App {...props} />));
+        styledJsxStyles = flush();
+      }
 
-      // The old recommended way to process Styled Components
-      const page = originalRenderPage(App => props => sheet.collectStyles(<App {...props} />));
-
-      const styledJsxStyles = flush();
       const styledComponentsStyles = sheet.getStyleElement();
 
       const initialProps = await Document.getInitialProps(ctx);
