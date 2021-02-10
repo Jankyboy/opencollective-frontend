@@ -93,7 +93,7 @@
     "react-tooltip": "4.2.10",
     "react-window": "1.8.5",
     "redis": "3.0.2",
-    "sanitize-html": "1.27.4",
+    "sanitize-html": "2.3.2",
     "slugify": "1.4.5",
     "speakeasy": "^2.0.0",
     "styled-components": "5.2.0",
@@ -204,7 +204,7 @@
     "shx": "^0.3.2",
     "style-loader": "^1.2.1",
     "url-loader": "^4.1.0",
-    "webpack-bundle-analyzer": "^3.8.0"
+    "webpack-bundle-analyzer": "^4.0.0"
   },
   "jest": {
     "moduleNameMapper": {
