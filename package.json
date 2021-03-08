@@ -65,7 +65,7 @@
     "memoize-one": "5.1.1",
     "moment": "2.28.0",
     "moment-timezone": "0.5.31",
-    "next": "9.5.3",
+    "next": "10.0.0",
     "next-routes": "1.4.2",
     "node-fetch": "2.6.1",
     "nprogress": "0.2.0",
@@ -154,7 +154,7 @@
     "test:update": "npm run test:jest -- --updateSnapshot"
   },
   "devDependencies": {
-    "@babel/cli": "7.11.6",
+    "@babel/cli": "7.12.0",
     "@babel/core": "7.7.7",
     "@babel/node": "7.7.7",
     "@cypress/code-coverage": "^3.8.1",
@@ -199,7 +199,7 @@
     "prettier": "2.1.2",
     "raf": "^3.4.1",
     "raw-loader": "^4.0.1",
-    "react-styleguidist": "11.1.0",
+    "react-styleguidist": "11.1.2",
     "react-test-renderer": "^16.13.1",
     "shx": "^0.3.2",
     "style-loader": "^1.2.1",
