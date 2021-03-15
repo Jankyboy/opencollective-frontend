@@ -4,11 +4,12 @@ import { gql } from '@apollo/client';
 import { graphql } from '@apollo/client/react/hoc';
 import { FormattedMessage } from 'react-intl';
 
+import Container from './Container';
 import Error from './Error';
 import { Box, Flex } from './Grid';
 import Link from './Link';
-import SectionTitle from './SectionTitle';
 import StyledButton from './StyledButton';
+import { H1, P } from './Text';
 import Updates from './Updates';
 
 class UpdatesWithData extends React.Component {
@@ -25,7 +26,7 @@ class UpdatesWithData extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      showNewUpdateForm: props.defaultAction === 'new' ? true : false,
+      showNewUpdateForm: props.defaultAction === 'new',
     };
   }
 
@@ -48,41 +49,29 @@ class UpdatesWithData extends React.Component {
     const updates = data.allUpdates;
     return (
       <div className="UpdatesContainer">
-        <style jsx>
-          {`
-            .FullPage .adminActions {
-              text-transform: uppercase;
-              font-size: 1.3rem;
-              font-weight: 600;
-              letter-spacing: 0.05rem;
-              margin-bottom: 3rem;
-            }
-          `}
-        </style>
-
         {!compact && (
-          <div className="FullPage">
-            <SectionTitle
-              title={<FormattedMessage id="updates" defaultMessage="Updates" />}
-              subtitle={
+          <Flex flexWrap="wrap" alignItems="center" pr={2} justifyContent="space-between">
+            <Container padding="0.8rem 0" my={4}>
+              <H1 fontSize="40px" fontWeight="normal" textAlign="left" mb={2}>
+                <FormattedMessage id="updates" defaultMessage="Updates" />
+              </H1>
+              <P color="black.700" css={{ flex: '0 1 70%' }}>
                 <FormattedMessage
                   id="section.updates.subtitle"
-                  defaultMessage="Stay up to dates with our latest activities and progress."
+                  defaultMessage="Updates on our activities and progress."
                 />
-              }
-            />
-          </div>
-        )}
-        {LoggedInUser?.canEditCollective(collective) && (
-          <Flex justifyContent="center">
-            <Link route="createUpdate" params={{ collectiveSlug: collective.slug }}>
-              <StyledButton buttonStyle="primary" buttonSize="small">
-                <FormattedMessage id="sections.update.new" defaultMessage="Create an Update" />
-              </StyledButton>
-            </Link>
+              </P>
+            </Container>
+            {LoggedInUser?.canEditCollective(collective) && (
+              <Link href={`/${collective.slug}/updates/new`}>
+                <StyledButton buttonStyle="primary" m={2}>
+                  <FormattedMessage id="sections.update.new" defaultMessage="Create an Update" />
+                </StyledButton>
+              </Link>
+            )}
           </Flex>
         )}
-        <Box my={5}>
+        <Box mt={4} mb={5}>
           <Updates
             collective={collective}
             updates={updates}

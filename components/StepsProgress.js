@@ -2,7 +2,6 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import { Check } from '@styled-icons/fa-solid/Check';
 import themeGet from '@styled-system/theme-get';
-import { transparentize } from 'polished';
 import { FormattedMessage } from 'react-intl';
 import styled, { css } from 'styled-components';
 
@@ -11,18 +10,62 @@ import withViewport, { VIEWPORTS } from '../lib/withViewport';
 import Container from './Container';
 import { Box, Flex } from './Grid';
 import StyledSpinner from './StyledSpinner';
-import { P, Span } from './Text';
+import { P } from './Text';
 
+const Circle = styled.svg`
+  circle {
+    fill: ${themeGet('colors.white.full')};
+    stroke: #c4c7cc;
+    stroke-width: 1px;
+
+    ${props =>
+      !props.disabled &&
+      css`
+        stroke: ${themeGet('colors.primary.600')};
+      `}
+
+    ${props =>
+      !props.disabled &&
+      css`
+        cursor: pointer;
+        stroke-width: 2px;
+        &:hover {
+          fill: ${themeGet('colors.black.100')};
+        }
+      `}
+
+  ${props =>
+      props.checked &&
+      (props.disabled
+        ? css`
+            fill: ${themeGet('colors.black.500')};
+          `
+        : css`
+        fill: ${themeGet('colors.primary.600')};
+        &:hover {
+          fill: ${themeGet('colors.primary.400')};
+        })
+  `)}
+  }
+
+  text {
+    font-size: 14px;
+    ${props =>
+      !props.disabled &&
+      css`
+        fill: ${themeGet('colors.primary.600')};
+      `}
+  }
+`;
 const Bubble = styled(Flex)`
   justify-content: center;
   align-items: center;
-  flex: 0 0 32px;
-  height: 32px;
-  width: 32px;
+  flex: 0 0 34px;
+  height: 34px;
+  width: 34px;
   border-radius: 16px;
   cursor: default;
-  color: #9d9fa3;
-  border: 1px solid #9d9fa3;
+  color: #c4c7cc;
   background: ${themeGet('colors.white.full')};
   transition: box-shadow 0.3s, background 0.3s;
   z-index: 2;
@@ -30,8 +73,7 @@ const Bubble = styled(Flex)`
   ${props =>
     !props.disabled &&
     css`
-      color: ${themeGet('colors.primary.500')};
-      border: 2px solid ${themeGet('colors.primary.500')};
+      color: ${themeGet('colors.primary.600')};
     `}
 
   ${props =>
@@ -51,7 +93,7 @@ const Bubble = styled(Flex)`
           background: ${themeGet('colors.black.500')};
         `
       : css`
-        background: ${themeGet('colors.primary.500')};
+        background: ${themeGet('colors.primary.600')};
         &:hover {
           background: ${themeGet('colors.primary.400')};
         })
@@ -60,7 +102,7 @@ const Bubble = styled(Flex)`
   ${props =>
     props.focus &&
     css`
-      box-shadow: 0 0 0 4px ${transparentize(0.24, '#1F87FF')};
+      box-shadow: 0 0 0 4px ${props => props.theme.colors.primary[100]};
     `}
 `;
 
@@ -71,7 +113,7 @@ const Bubble = styled(Flex)`
 const SeparatorLine = styled(props => (
   <Flex alignItems="center" {...props}>
     <svg width="100%" height="2" version="1.1" xmlns="http://www.w3.org/2000/svg">
-      <line strokeDasharray="10%" x1="0" y1="0" x2="100%" y2="0" />
+      <line strokeDasharray="5%" x1="0" y1="0" x2="100%" y2="0" />
     </svg>
   </Flex>
 ))`
@@ -203,7 +245,7 @@ const PieHalfCircleRight = styled(PieHalfCircle)`
         `}
 `;
 
-const getBubbleContent = (idx, checked, loading) => {
+const getBubbleContent = (idx, checked, disabled, focused, loading) => {
   if (loading) {
     return <StyledSpinner color={checked ? '#FFFFFF' : 'primary.700'} size={14} />;
   } else if (checked) {
@@ -211,9 +253,12 @@ const getBubbleContent = (idx, checked, loading) => {
   }
 
   return (
-    <Span fontWeight={900} fontSize={14}>
-      {idx + 1}
-    </Span>
+    <Circle disabled={disabled} checked={checked} focus={focused}>
+      <circle cx="50%" cy="50%" r="16px"></circle>
+      <text x="50%" y="51%" dominantBaseline="middle" textAnchor="middle">
+        {idx + 1}
+      </text>
+    </Circle>
   );
 };
 
@@ -251,7 +296,7 @@ const StepsProgress = ({
               </P>
 
               {mobileNextStep && (
-                <P color="black.500">
+                <P color="black.700" fontSize="12px" lineHeight="18px">
                   <FormattedMessage
                     id="StepsProgress.mobile.next"
                     defaultMessage="Next: {stepName}"
@@ -270,11 +315,11 @@ const StepsProgress = ({
                 </PieProgress>
                 <PieShadow pieSize={pieSize} bgColor={bgColor} />
               </PieProgressWrapper>
-              <P color="black.500" fontSize="10px">
+              <P color="black.700" fontSize="12px">
                 <FormattedMessage
                   id="StepsProgress.mobile.status"
                   defaultMessage="{from} of {to}"
-                  values={{ from: <Span fontWeight="900">{mobileStepIdx + 1}</Span>, to: steps.length }}
+                  values={{ from: mobileStepIdx + 1, to: steps.length }}
                 />
               </P>
             </StepsMobileRight>
@@ -308,7 +353,7 @@ const StepsProgress = ({
                     checked={checked}
                     focus={focused}
                   >
-                    {getBubbleContent(idx, checked, loading)}
+                    {getBubbleContent(idx, checked, disabled, focused, loading)}
                   </Bubble>
                   <SeparatorLine active={checked} transparent={idx === steps.length - 1} />
                 </Flex>

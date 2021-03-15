@@ -20,6 +20,10 @@ const getEventParentCollectiveSlug = parentCollective => {
 const LinkCollective = ({ target, title, collective, children, ...props }) => {
   if (!collective || collective.isIncognito) {
     return children || <FormattedMessage id="profile.incognito" defaultMessage="Incognito" />;
+  } else if (collective.isGuest) {
+    return children || <FormattedMessage id="profile.guest" defaultMessage="Guest" />;
+  } else if (!collective.slug || collective.type === 'VENDOR') {
+    return children || collective.name;
   }
 
   const { type, slug, name, parentCollective, isIncognito } = collective;
@@ -27,17 +31,15 @@ const LinkCollective = ({ target, title, collective, children, ...props }) => {
     return children || <FormattedMessage id="profile.incognito" defaultMessage="Incognito" />;
   }
   return type !== 'EVENT' ? (
-    <Link route="collective" params={{ slug }} {...props} title={title || name} target={target} passHref>
+    <Link href={`/${slug}`} {...props} title={title || name} target={target}>
       {children || name || slug}
     </Link>
   ) : (
     <Link
-      route="event"
-      params={{ slug, parentCollectiveSlug: getEventParentCollectiveSlug(parentCollective) }}
+      href={`/${getEventParentCollectiveSlug(parentCollective)}/events/${slug}`}
       title={title || name}
       target={target}
       {...props}
-      passHref
     >
       {children || name || slug}
     </Link>
@@ -49,8 +51,9 @@ LinkCollective.propTypes = {
   collective: PropTypes.shape({
     name: PropTypes.string,
     slug: PropTypes.string,
-    type: PropTypes.string.isRequired,
+    type: PropTypes.string,
     isIncognito: PropTypes.bool,
+    isGuest: PropTypes.bool,
     parentCollective: PropTypes.shape({
       slug: PropTypes.string,
     }),

@@ -1,19 +1,18 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import { useQuery } from '@apollo/client';
-import { mapValues, omit } from 'lodash';
+import { isEmpty, omit, omitBy } from 'lodash';
 import { useRouter } from 'next/router';
 import { FormattedMessage } from 'react-intl';
 
 import EXPENSE_STATUS from '../../lib/constants/expense-status';
 import { API_V2_CONTEXT, gqlV2 } from '../../lib/graphql/helpers';
-import { Router } from '../../server/pages';
 
+import { parseAmountRange } from '../budget/filters/AmountFilter';
+import { getDateRangeFromPeriod } from '../budget/filters/PeriodFilter';
 import DismissibleMessage from '../DismissibleMessage';
 import ExpensesFilters from '../expenses/ExpensesFilters';
 import ExpensesList from '../expenses/ExpensesList';
-import { parseAmountRange } from '../expenses/filters/ExpensesAmountFilter';
-import { getDateRangeFromPeriod } from '../expenses/filters/ExpensesDateFilter';
 import {
   expenseHostFields,
   expensesListAdminFieldsFragment,
@@ -74,11 +73,11 @@ const hostDashboardExpensesQuery = gqlV2/* GraphQL */ `
           slug
           currency
           type
-          ... on Collective {
-            balance
-          }
-          ... on Event {
-            balance
+          stats {
+            balanceWithBlockedFunds {
+              valueInCents
+              currency
+            }
           }
         }
       }
@@ -114,17 +113,24 @@ const getVariablesFromQuery = query => {
   };
 };
 
+const ROUTE_PARAMS = ['hostCollectiveSlug', 'view'];
+
 const HostDashboardExpenses = ({ hostSlug }) => {
-  const { query } = useRouter() || {};
+  const router = useRouter() || {};
+  const query = router.query;
+  const getQueryParams = newParams => {
+    return omitBy({ ...router.query, ...newParams }, (value, key) => !value || ROUTE_PARAMS.includes(key));
+  };
+
   const [paypalPreApprovalError, setPaypalPreApprovalError] = React.useState(null);
   const { data, error, loading, variables, refetch } = useQuery(hostDashboardExpensesQuery, {
-    variables: { hostSlug, ...getVariablesFromQuery(query) },
+    variables: { hostSlug, ...getVariablesFromQuery(omitBy(query, isEmpty)) },
     context: API_V2_CONTEXT,
   });
   const hasFilters = React.useMemo(
     () =>
       Object.entries(query).some(([key, value]) => {
-        return !['view', 'offset', 'limit', 'hostCollectiveSlug', 'paypalApprovalError'].includes(key) && value;
+        return ![...ROUTE_PARAMS, 'offset', 'limit', 'paypalApprovalError'].includes(key) && value;
       }),
     [query],
   );
@@ -132,12 +138,12 @@ const HostDashboardExpenses = ({ hostSlug }) => {
   React.useEffect(() => {
     if (query.paypalApprovalError && !paypalPreApprovalError) {
       setPaypalPreApprovalError(query.paypalApprovalError);
-      Router.replaceRoute('host.dashboard', omit(query, 'paypalApprovalError'), { shallow: true });
+      router.replace(`/${hostSlug}/dashboard/expenses`, omit(query, 'paypalApprovalError'), { shallow: true });
     }
   }, [query.paypalApprovalError]);
 
   return (
-    <Box maxWidth={1000} m="0 auto" py={5} px={2}>
+    <Box maxWidth={1000} m="0 auto" px={2}>
       <Flex>
         <H1 fontSize="32px" lineHeight="40px" mb={24} py={2} fontWeight="normal">
           <FormattedMessage id="section.expenses.title" defaultMessage="Expenses" />
@@ -146,7 +152,12 @@ const HostDashboardExpenses = ({ hostSlug }) => {
         <Box p={2}>
           <SearchBar
             defaultValue={query.searchTerm}
-            onSubmit={searchTerm => Router.pushRoute('host.dashboard', { ...query, searchTerm, offset: null })}
+            onSubmit={searchTerm =>
+              router.push({
+                pathname: `/${hostSlug}/dashboard/expenses`,
+                query: getQueryParams({ searchTerm, offset: null }),
+              })
+            }
           />
         </Box>
       </Flex>
@@ -155,7 +166,23 @@ const HostDashboardExpenses = ({ hostSlug }) => {
         <DismissibleMessage>
           {({ dismiss }) => (
             <MessageBox type="warning" mb={3} withIcon onClose={dismiss}>
-              {paypalPreApprovalError}
+              {paypalPreApprovalError === 'PRE_APPROVAL_EMAIL_CHANGED' ? (
+                <FormattedMessage
+                  id="paypal.preApproval.emailWarning"
+                  defaultMessage="Warning: the associated PayPal email was changed from {oldEmail} to {newEmail}. If this was not intentional, click {refillBalance} and use the correct account."
+                  values={{
+                    oldEmail: <strong>{query.oldPaypalEmail}</strong>,
+                    newEmail: <strong>{query.newPaypalEmail}</strong>,
+                    refillBalance: (
+                      <q>
+                        <FormattedMessage id="ConnectPaypal.refill" defaultMessage="Refill balance" />
+                      </q>
+                    ),
+                  }}
+                />
+              ) : (
+                paypalPreApprovalError
+              )}
             </MessageBox>
           )}
         </DismissibleMessage>
@@ -175,10 +202,9 @@ const HostDashboardExpenses = ({ hostSlug }) => {
             collective={data.host}
             filters={query}
             onChange={queryParams =>
-              Router.pushRoute('host.dashboard', {
-                ...query,
-                ...queryParams,
-                offset: null,
+              router.push({
+                pathname: `/${hostSlug}/dashboard/expenses`,
+                query: getQueryParams({ ...queryParams, offset: null }),
               })
             }
           />
@@ -195,15 +221,7 @@ const HostDashboardExpenses = ({ hostSlug }) => {
               values={{
                 ResetLink(text) {
                   return (
-                    <Link
-                      data-cy="reset-expenses-filters"
-                      route="host.dashboard"
-                      params={{
-                        ...mapValues(query, () => null),
-                        hostCollectiveSlug: data.host.slug,
-                        view: 'expenses-legacy',
-                      }}
-                    >
+                    <Link data-cy="reset-expenses-filters" href={{ pathname: `/${data.host.slug}/dashboard` }}>
                       {text}
                     </Link>
                   );
@@ -228,10 +246,11 @@ const HostDashboardExpenses = ({ hostSlug }) => {
           />
           <Flex mt={5} justifyContent="center">
             <Pagination
-              route="host.dashboard"
+              route={`/${hostSlug}/dashboard/expenses`}
               total={data?.expenses?.totalCount}
               limit={variables.limit}
               offset={variables.offset}
+              ignoredQueryParams={ROUTE_PARAMS}
               scrollToTopOnChange
             />
           </Flex>

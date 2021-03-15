@@ -6,7 +6,6 @@ const proxy = require('express-http-proxy');
 const { template, trim } = require('lodash');
 
 const intl = require('./intl');
-const pages = require('./pages');
 
 const baseApiUrl = process.env.INTERNAL_API_URL || process.env.API_URL;
 
@@ -88,12 +87,14 @@ module.exports = (expressApp, nextApp) => {
    * Prevent indexation from search engines
    * (out of 'production' environment)
    */
-  app.get('/robots.txt', (req, res) => {
-    res.setHeader('Content-Type', 'text/plain');
-    if (process.env.OC_ENV !== 'production' || process.env.ROBOTS_DISALLOW) {
+  app.get('/robots.txt', (req, res, next) => {
+    const hostname = req.get('original-hostname') || req.hostname;
+    if (hostname !== 'opencollective.com') {
+      res.setHeader('Content-Type', 'text/plain');
       res.send('User-agent: *\nDisallow: /');
     } else {
-      res.send('User-agent: *\nAllow: /');
+      // Will send public/robots.txt
+      next();
     }
   });
 
@@ -156,5 +157,5 @@ module.exports = (expressApp, nextApp) => {
     );
   });
 
-  return pages.getRequestHandler(nextApp);
+  return nextApp.getRequestHandler();
 };

@@ -1,30 +1,31 @@
 import React from 'react';
 import PropTypes from 'prop-types';
+import { graphql } from '@apollo/client/react/hoc';
 import { CheckDouble } from '@styled-icons/boxicons-regular/CheckDouble';
 import { Donate as DonateIcon } from '@styled-icons/fa-solid/Donate';
-import { FileInvoice } from '@styled-icons/fa-solid/FileInvoice';
 import { Grid as HostedCollectivesIcon } from '@styled-icons/feather/Grid';
 import { Receipt as ReceiptIcon } from '@styled-icons/material/Receipt';
-import { omit } from 'lodash';
 import { FormattedMessage } from 'react-intl';
 import styled, { css } from 'styled-components';
 
-import { addCollectiveCoverData } from '../lib/graphql/queries';
+import { CollectiveType } from '../lib/constants/collectives';
+import { API_V2_CONTEXT, gqlV2 } from '../lib/graphql/helpers';
 
-import CollectiveNavbar from '../components/CollectiveNavbar';
+import CollectiveNavbar from '../components/collective-navbar';
 import Container from '../components/Container';
-import { Flex } from '../components/Grid';
-import { Dashboard, PendingApplications } from '../components/host-dashboard';
+import { Box, Flex } from '../components/Grid';
 import { HOST_SECTIONS } from '../components/host-dashboard/constants';
 import HostDashboardExpenses from '../components/host-dashboard/HostDashboardExpenses';
 import HostDashboardHostedCollectives from '../components/host-dashboard/HostDashboardHostedCollectives';
+import PendingApplications from '../components/host-dashboard/PendingApplications';
 import Link from '../components/Link';
 import Loading from '../components/Loading';
 import MessageBox from '../components/MessageBox';
+import OrdersWithData from '../components/orders/OrdersWithData';
 import Page from '../components/Page';
 import { withUser } from '../components/UserProvider';
 
-const MenuLink = styled(props => <Link {...omit(props, ['isActive'])} />)`
+const LinkContainer = styled(props => <Container {...props} />)`
   padding: 4px 20px 0 20px;
   color: #71757a;
   height: 60px;
@@ -66,20 +67,21 @@ class HostDashboardPage extends React.Component {
   static propTypes = {
     slug: PropTypes.string, // for addData
     ssr: PropTypes.bool,
-    data: PropTypes.object, // from withData
+    data: PropTypes.shape({
+      loading: PropTypes.bool.isRequired,
+      account: PropTypes.shape({
+        type: PropTypes.oneOf(Object.values(CollectiveType)).isRequired,
+        slug: PropTypes.string.isRequired,
+      }),
+    }),
     loadingLoggedInUser: PropTypes.bool.isRequired, // from withUser
     LoggedInUser: PropTypes.object, // from withUser
-    view: PropTypes.oneOf(['expenses', 'expenses-legacy', 'hosted-collectives', 'donations', 'pending-applications'])
-      .isRequired,
+    view: PropTypes.oneOf(['expenses', 'hosted-collectives', 'donations', 'pending-applications']).isRequired,
   };
 
   // See https://github.com/opencollective/opencollective/issues/1872
   shouldComponentUpdate(newProps) {
-    if (this.props.data.Collective && (!newProps.data || !newProps.data.Collective)) {
-      return false;
-    } else {
-      return true;
-    }
+    return !(this.props.data.account && (!newProps.data || !newProps.data.account));
   }
 
   renderView(host) {
@@ -91,7 +93,13 @@ class HostDashboardPage extends React.Component {
           <FormattedMessage id="mustBeLoggedIn" defaultMessage="You must be logged in to see this page" />
         </MessageBox>
       );
-    } else if (LoggedInUser && !LoggedInUser.canEditCollective(data.Collective)) {
+    } else if (!data.account) {
+      return (
+        <MessageBox m={5} type="error" withIcon>
+          <FormattedMessage id="notFound" defaultMessage="Not found" />
+        </MessageBox>
+      );
+    } else if (!LoggedInUser.canEditCollective(data.account)) {
       return (
         <MessageBox m={5} type="error" withIcon>
           <FormattedMessage
@@ -100,35 +108,22 @@ class HostDashboardPage extends React.Component {
           />
         </MessageBox>
       );
-    } else if (!data.Collective) {
-      return (
-        <MessageBox m={5} type="error" withIcon>
-          <FormattedMessage id="notFound" defaultMessage="Not found" />
-        </MessageBox>
-      );
-    } else if (!data.Collective.plan.hostDashboard) {
+    } else if (!host.isHost || host.type === CollectiveType.COLLECTIVE) {
       return (
         <MessageBox m={5} type="error" withIcon>
           <FormattedMessage
-            id="page.error.plan.needs.upgrade"
-            defaultMessage="You must upgrade your plan to access this page"
+            id="page.error.collective.is.not.host"
+            defaultMessage="This page is only for Fiscal Hosts."
           />
-        </MessageBox>
-      );
-    } else if (!host.isHost) {
-      return (
-        <MessageBox m={5} type="error" withIcon>
-          <FormattedMessage id="page.error.collective.is.not.host" defaultMessage="This page is only for hosts" />
         </MessageBox>
       );
     }
 
     switch (view) {
       case 'pending-applications':
-        return <PendingApplications hostCollectiveSlug={host.slug} />;
-      case 'expenses-legacy':
+        return <PendingApplications hostSlug={host.slug} />;
       case 'donations':
-        return <Dashboard view={view} hostCollectiveSlug={host.slug} LoggedInUser={LoggedInUser} />;
+        return <OrdersWithData accountSlug={host.slug} showPlatformTip />;
       case HOST_SECTIONS.HOSTED_COLLECTIVES:
         return <HostDashboardHostedCollectives hostSlug={host.slug} />;
       default:
@@ -138,19 +133,16 @@ class HostDashboardPage extends React.Component {
 
   render() {
     const { LoggedInUser, loadingLoggedInUser, data, view, slug } = this.props;
-    const host = data.Collective || {};
+    const host = data.account || {};
 
     const canEdit = LoggedInUser && host && LoggedInUser.canEditCollective(host);
 
     return (
-      <Page
-        collective={host}
-        title={host.name || 'Host Dashboard'}
-        withoutGlobalStyles={!['expenses-legacy', 'donations'].includes(view)}
-      >
-        {data.Collective && (
+      <Page collective={host} title={host.name || 'Host Dashboard'}>
+        {data.account && (
           <Container>
-            <CollectiveNavbar collective={host} isAdmin={canEdit} showEdit onlyInfos={true} />
+            {/** Container here is important to make sure navbar doesn't stay fixed at the top (sticky must be at the same DOM nesting level to work) */}
+            <CollectiveNavbar collective={host} isAdmin={canEdit} onlyInfos={true} />
           </Container>
         )}
         {loadingLoggedInUser || data.loading ? (
@@ -171,48 +163,32 @@ class HostDashboardPage extends React.Component {
               flexWrap="wrap"
               data-cy="host-dashboard-menu-bar"
             >
-              <MenuLink
-                route="host.dashboard"
-                params={{ hostCollectiveSlug: slug, view: 'expenses' }}
-                isActive={view === 'expenses'}
-              >
-                <ReceiptIcon size="1em" />
-                <FormattedMessage id="section.expenses.title" defaultMessage="Expenses" />
-              </MenuLink>
-              <MenuLink
-                route="host.dashboard"
-                params={{ hostCollectiveSlug: slug, view: 'expenses-legacy' }}
-                isActive={view === 'expenses-legacy'}
-              >
-                <FileInvoice size="1em" />
-                <FormattedMessage id="section.expenses.title" defaultMessage="Expenses" /> (Legacy)
-              </MenuLink>
-              <MenuLink
-                route="host.dashboard"
-                params={{ hostCollectiveSlug: slug, view: 'donations' }}
-                isActive={view === 'donations'}
-              >
-                <DonateIcon size="1em" />
-                <FormattedMessage id="FinancialContributions" defaultMessage="Financial Contributions" />
-              </MenuLink>
-              <MenuLink
-                route="host.dashboard"
-                params={{ hostCollectiveSlug: slug, view: 'pending-applications' }}
-                isActive={view === 'pending-applications'}
-              >
-                <CheckDouble size="1.2em" />
-                <FormattedMessage id="host.dashboard.tab.pendingApplications" defaultMessage="Pending applications" />
-              </MenuLink>
-              <MenuLink
-                route="host.dashboard"
-                params={{ hostCollectiveSlug: slug, view: HOST_SECTIONS.HOSTED_COLLECTIVES }}
-                isActive={view === HOST_SECTIONS.HOSTED_COLLECTIVES}
-              >
-                <HostedCollectivesIcon size="1.2em" />
-                <FormattedMessage id="HostedCollectives" defaultMessage="Hosted Collectives" />
-              </MenuLink>
+              <Link href={`/${slug}/dashboard/expenses`}>
+                <LinkContainer isActive={view === 'expenses'}>
+                  <ReceiptIcon size="1em" />
+                  <FormattedMessage id="section.expenses.title" defaultMessage="Expenses" />
+                </LinkContainer>
+              </Link>
+              <Link href={`/${slug}/dashboard/donations`}>
+                <LinkContainer isActive={view === 'donations'}>
+                  <DonateIcon size="1em" />
+                  <FormattedMessage id="FinancialContributions" defaultMessage="Financial Contributions" />
+                </LinkContainer>
+              </Link>
+              <Link href={`/${slug}/dashboard/pending-applications`}>
+                <LinkContainer isActive={view === 'pending-applications'}>
+                  <CheckDouble size="1.2em" />
+                  <FormattedMessage id="host.dashboard.tab.pendingApplications" defaultMessage="Pending applications" />
+                </LinkContainer>
+              </Link>
+              <Link href={`/${slug}/dashboard/${HOST_SECTIONS.HOSTED_COLLECTIVES}`}>
+                <LinkContainer isActive={view === HOST_SECTIONS.HOSTED_COLLECTIVES}>
+                  <HostedCollectivesIcon size="1.2em" />
+                  <FormattedMessage id="HostedCollectives" defaultMessage="Hosted Collectives" />
+                </LinkContainer>
+              </Link>
             </Container>
-            <div>{this.renderView(host)}</div>
+            <Box py={['32px', '60px']}>{this.renderView(host)}</Box>
           </React.Fragment>
         )}
       </Page>
@@ -220,4 +196,20 @@ class HostDashboardPage extends React.Component {
   }
 }
 
-export default withUser(addCollectiveCoverData(HostDashboardPage));
+const hostDashboardPageQuery = gqlV2/* GraphQL */ `
+  query HostDashboardPage($slug: String) {
+    account(slug: $slug) {
+      id
+      type
+      slug
+      name
+      isHost
+    }
+  }
+`;
+
+const addHostDashboardPageData = graphql(hostDashboardPageQuery, {
+  options: { context: API_V2_CONTEXT },
+});
+
+export default withUser(addHostDashboardPageData(HostDashboardPage));

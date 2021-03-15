@@ -25,6 +25,10 @@ const getBorderColor = ({ error, success }) => {
  * @see See [styled-system docs](https://github.com/jxnblk/styled-system/blob/master/docs/api.md) for usage of those props
  */
 const StyledInput = styled.input`
+  &:not([type='checkbox']):not([type='radio']) {
+    min-height: 36px;
+  }
+
   ${background}
   ${border}
   ${color}
@@ -55,6 +59,10 @@ const StyledInput = styled.input`
           `;
     }
   }}
+
+  &[type=radio] {
+    cursor: pointer;
+  }
 
   &:disabled {
     background-color: ${themeGet('colors.black.50')};

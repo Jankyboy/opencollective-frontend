@@ -43,12 +43,16 @@ const ExpenseModal = ({ expense, onDelete, onProcess, onClose, show }) => {
       position="relative"
       padding={0}
       overflowY="hidden"
+      trapFocus={!loading}
     >
       <ModalBody maxHeight="calc(80vh - 80px)" overflowY="auto" mb={80} p={20}>
         <ExpenseSummary
           isLoading={loading || !data}
           expense={!loading ? data?.expense : null}
           host={!loading ? data?.expense?.account?.host : null}
+          collective={!loading ? data?.expense?.account : null}
+          onDelete={onDelete}
+          onClose={onClose}
           borderless
         />
       </ModalBody>
@@ -69,7 +73,7 @@ const ExpenseModal = ({ expense, onDelete, onProcess, onClose, show }) => {
           </Box>
         )}
         {data?.expense && (
-          <Flex p={3} justifyContent="space-between" alignItems="center">
+          <Flex p={3} justifyContent="space-between" alignItems="flex-end">
             <Box display={['none', 'flex']}>
               <ExpenseAdminActions
                 collective={data.expense.account}

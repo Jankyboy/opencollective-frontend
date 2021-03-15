@@ -19,11 +19,11 @@ import ExpenseTags from '../expenses/ExpenseTags';
 import { Box, Flex } from '../Grid';
 import PrivateInfoIcon from '../icons/PrivateInfoIcon';
 import LinkCollective from '../LinkCollective';
-import OrderStatusTag from '../OrderStatusTag';
 import StyledButton from '../StyledButton';
 import StyledLink from '../StyledLink';
 import { P, Span } from '../Text';
 import TransactionSign from '../TransactionSign';
+import TransactionStatusTag from '../TransactionStatusTag';
 import { useUser } from '../UserProvider';
 
 import TransactionDetails from './TransactionDetails';
@@ -31,7 +31,29 @@ import TransactionDetails from './TransactionDetails';
 /** To separate individual information below description */
 const INFO_SEPARATOR = ' • ';
 
-const TransactionItem = ({ displayActions, collective, ...transaction }) => {
+const getDisplayedAmount = (transaction, collective) => {
+  const isCredit = transaction.type === TransactionTypes.CREDIT;
+  const hasOrder = transaction.order !== null;
+  const isSelf = transaction.fromAccount.slug === collective.slug;
+
+  if (isCredit && hasOrder) {
+    // Credit from donations should display the full amount donated by the user
+    return transaction.amount;
+  } else if (!isCredit && !hasOrder) {
+    // Expense Debits should display the Amount with Payment Method fees only on collective's profile
+    return isSelf ? transaction.netAmount : transaction.amount;
+  } else if (transaction.isRefunded) {
+    if ((isSelf && !transaction.isRefund) || (transaction.isRefund && isCredit)) {
+      return transaction.netAmount;
+    } else {
+      return transaction.amount;
+    }
+  } else {
+    return transaction.netAmount;
+  }
+};
+
+const TransactionItem = ({ displayActions, collective, transaction, onMutationSuccess }) => {
   const {
     toAccount,
     fromAccount,
@@ -39,12 +61,11 @@ const TransactionItem = ({ displayActions, collective, ...transaction }) => {
     order,
     expense,
     type,
-    amount,
-    netAmount,
     description,
     createdAt,
     isRefunded,
     isRefund,
+    isOrderRejected,
   } = transaction;
   const { LoggedInUser } = useUser();
   const [isExpanded, setExpanded] = React.useState(false);
@@ -61,15 +82,7 @@ const TransactionItem = ({ displayActions, collective, ...transaction }) => {
   const isFromCollectiveAdmin = LoggedInUser && LoggedInUser.canEditCollective(fromAccount);
   const isToCollectiveAdmin = LoggedInUser && LoggedInUser.canEditCollective(toAccount);
   const canDownloadInvoice = isRoot || isHostAdmin || isFromCollectiveAdmin || isToCollectiveAdmin;
-  let displayedAmount =
-    (isCredit && hasOrder) || // Credit from donations should display the full amount donated by the user
-    (!isCredit && !hasOrder) // Expense Debits should display the Amount without Payment Method fees
-      ? amount
-      : netAmount;
-  // The refunded transaction logic because it's a bit messy, the conditional was conceived by trial
-  if (isRefunded) {
-    displayedAmount = (fromAccount.slug == collective.slug && !isRefund) || (isRefund && isCredit) ? netAmount : amount;
-  }
+  const displayedAmount = getDisplayedAmount(transaction, collective);
 
   return (
     <Item data-cy="transaction-item">
@@ -109,7 +122,7 @@ const TransactionItem = ({ displayActions, collective, ...transaction }) => {
                   </Span>
                 )}
               </P>
-              <P mt="5px" fontSize="12px" lineHeight="16px" color="black.600" data-cy="transaction-details">
+              <P mt="5px" fontSize="12px" lineHeight="16px" color="black.700" data-cy="transaction-details">
                 {hasOrder ? (
                   <FormattedMessage
                     id="Transaction.from"
@@ -118,7 +131,7 @@ const TransactionItem = ({ displayActions, collective, ...transaction }) => {
                   />
                 ) : (
                   <FormattedMessage
-                    id="Transaction.by"
+                    id="CreatedBy"
                     defaultMessage="by {name}"
                     values={{ name: <StyledLink as={LinkCollective} collective={toAccount} colorShade={600} /> }}
                   />
@@ -140,9 +153,11 @@ const TransactionItem = ({ displayActions, collective, ...transaction }) => {
                 )}
                 {INFO_SEPARATOR}
                 <span data-cy="transaction-date">
-                  <FormattedDate value={createdAt} />
+                  <time title={createdAt}>
+                    <FormattedDate value={createdAt} year="numeric" month="long" day="2-digit" />
+                  </time>
                 </span>
-                {hasExpense && expense.comments?.totalCount && (
+                {hasExpense && expense.comments?.totalCount > 0 && (
                   <React.Fragment>
                     {INFO_SEPARATOR}
                     <span>
@@ -167,18 +182,27 @@ const TransactionItem = ({ displayActions, collective, ...transaction }) => {
               ml="auto"
             >
               <TransactionSign isCredit={isCredit} />
-              <Span fontWeight="bold" mr={1}>
+              <Span fontWeight="bold" color="black.900" mr={1}>
                 {formatCurrency(Math.abs(displayedAmount.valueInCents), displayedAmount.currency)}
               </Span>
-              <Span color="black.400" textTransform="uppercase">
+              <Span color="black.700" textTransform="uppercase">
                 {displayedAmount.currency}
               </Span>
             </Container>
-            {hasOrder && <OrderStatusTag status={'PAID'} isRefund={isRefunded} fontSize="9px" px="6px" py="2px" />}{' '}
+            {hasOrder && (
+              <TransactionStatusTag
+                isRefund={isRefund}
+                isRefunded={isRefunded}
+                isOrderRejected={isOrderRejected}
+                fontSize="9px"
+                px="6px"
+                py="2px"
+              />
+            )}{' '}
             {hasExpense && <ExpenseStatusTag status={expense.status} fontSize="9px" px="6px" py="2px" />}
           </Flex>
         </Flex>
-        {!hasExpense && (
+        {hasOrder && (
           <Container borderTop={['1px solid #E8E9EB', 'none']} mt={3} pt={[2, 0]}>
             <StyledButton
               data-cy="transaction-details"
@@ -213,7 +237,13 @@ const TransactionItem = ({ displayActions, collective, ...transaction }) => {
           </Container>
         )}
       </Box>
-      {isExpanded && !hasExpense && <TransactionDetails {...transaction} displayActions={displayActions} />}
+      {isExpanded && hasOrder && (
+        <TransactionDetails
+          displayActions={displayActions}
+          transaction={transaction}
+          onMutationSuccess={onMutationSuccess}
+        />
+      )}
       {isExpanded && hasExpense && (
         <ExpenseModal
           expense={transaction.expense}
@@ -229,60 +259,74 @@ const TransactionItem = ({ displayActions, collective, ...transaction }) => {
 TransactionItem.propTypes = {
   /* Display Refund and Download buttons in transactions */
   displayActions: PropTypes.bool,
-  isRefunded: PropTypes.bool,
-  isRefund: PropTypes.bool,
+  transaction: PropTypes.shape({
+    isRefunded: PropTypes.bool,
+    isRefund: PropTypes.bool,
+    isOrderRejected: PropTypes.bool,
+    fromAccount: PropTypes.shape({
+      id: PropTypes.string,
+      slug: PropTypes.string.isRequired,
+      name: PropTypes.string.isRequired,
+      imageUrl: PropTypes.string,
+      isIncognito: PropTypes.bool,
+    }).isRequired,
+    host: PropTypes.shape({
+      id: PropTypes.string,
+      slug: PropTypes.string.isRequired,
+      name: PropTypes.string.isRequired,
+      imageUrl: PropTypes.string,
+    }),
+    toAccount: PropTypes.shape({
+      id: PropTypes.string,
+      slug: PropTypes.string.isRequired,
+      name: PropTypes.string.isRequired,
+      imageUrl: PropTypes.string,
+    }),
+    giftCardEmitterAccount: PropTypes.shape({
+      id: PropTypes.string,
+      slug: PropTypes.string.isRequired,
+      name: PropTypes.string.isRequired,
+      imageUrl: PropTypes.string,
+    }),
+    order: PropTypes.shape({
+      id: PropTypes.string,
+      status: PropTypes.string,
+    }),
+    expense: PropTypes.shape({
+      id: PropTypes.string,
+      status: PropTypes.string,
+      legacyId: PropTypes.number,
+      comments: PropTypes.shape({
+        totalCount: PropTypes.number,
+      }),
+    }),
+    id: PropTypes.string,
+    uuid: PropTypes.string,
+    type: PropTypes.string,
+    currency: PropTypes.string,
+    description: PropTypes.string,
+    createdAt: PropTypes.string,
+    hostFeeInHostCurrency: PropTypes.number,
+    platformFeeInHostCurrency: PropTypes.number,
+    paymentProcessorFeeInHostCurrency: PropTypes.number,
+    taxAmount: PropTypes.number,
+    amount: PropTypes.shape({
+      valueInCents: PropTypes.number,
+      currency: PropTypes.string,
+    }),
+    netAmount: PropTypes.shape({
+      valueInCents: PropTypes.number,
+      currency: PropTypes.string,
+    }),
+    netAmountInCollectiveCurrency: PropTypes.number,
+    refundTransaction: PropTypes.object,
+    usingGiftCardFromCollective: PropTypes.object,
+  }),
   collective: PropTypes.shape({
     id: PropTypes.number,
     slug: PropTypes.string.isRequired,
   }).isRequired,
-  fromAccount: PropTypes.shape({
-    id: PropTypes.string,
-    slug: PropTypes.string.isRequired,
-    name: PropTypes.string.isRequired,
-    imageUrl: PropTypes.string,
-  }).isRequired,
-  toAccount: PropTypes.shape({
-    id: PropTypes.string,
-    slug: PropTypes.string.isRequired,
-    name: PropTypes.string.isRequired,
-    imageUrl: PropTypes.string,
-  }),
-  giftCardEmitterAccount: PropTypes.shape({
-    id: PropTypes.string,
-    slug: PropTypes.string.isRequired,
-    name: PropTypes.string.isRequired,
-    imageUrl: PropTypes.string,
-  }),
-  order: PropTypes.shape({
-    id: PropTypes.string,
-    status: PropTypes.string,
-  }),
-  expense: PropTypes.shape({
-    id: PropTypes.string,
-    status: PropTypes.string,
-    legacyId: PropTypes.number,
-  }),
-  id: PropTypes.string,
-  uuid: PropTypes.string,
-  type: PropTypes.string,
-  currency: PropTypes.string,
-  description: PropTypes.string,
-  createdAt: PropTypes.string,
-  hostFeeInHostCurrency: PropTypes.number,
-  platformFeeInHostCurrency: PropTypes.number,
-  paymentProcessorFeeInHostCurrency: PropTypes.number,
-  taxAmount: PropTypes.number,
-  amount: PropTypes.shape({
-    valueInCents: PropTypes.number,
-    currency: PropTypes.string,
-  }),
-  netAmount: PropTypes.shape({
-    valueInCents: PropTypes.number,
-    currency: PropTypes.string,
-  }),
-  netAmountInCollectiveCurrency: PropTypes.number,
-  refundTransaction: PropTypes.object,
-  usingVirtualCardFromCollective: PropTypes.object,
+  onMutationSuccess: PropTypes.func,
 };
 
 export default TransactionItem;

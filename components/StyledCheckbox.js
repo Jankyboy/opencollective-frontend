@@ -1,7 +1,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import themeGet from '@styled-system/theme-get';
-import styled from 'styled-components';
+import styled, { css } from 'styled-components';
 import { size, typography } from 'styled-system';
 
 import StyledSpinner from './StyledSpinner';
@@ -42,6 +42,7 @@ const CustomCheckbox = styled.span`
 `;
 
 const CheckboxContainer = styled.div`
+  position: relative;
   display: flex;
   align-items: ${props => props.alignItems};
   line-height: 1.4em;
@@ -59,7 +60,7 @@ const CheckboxContainer = styled.div`
   label {
     cursor: pointer;
     margin: 0;
-    margin-left: 1.5em;
+    margin-left: 2.2rem;
     z-index: 9;
     font-weight: normal;
     width: auto;
@@ -68,6 +69,11 @@ const CheckboxContainer = styled.div`
   /* Show our custom checkbox */
   ${CustomCheckbox} {
     ${size}
+    ${props =>
+      props.error &&
+      css`
+        border-color: ${themeGet('colors.red.500')};
+      `}
   }
 
   /* Hover label / checkbox - only for pointer devices (ignored on touch devices) */
@@ -138,7 +144,19 @@ class StyledCheckbox extends React.Component {
   }
 
   render() {
-    const { name, checked, label, disabled, size, inputId, width, alignItems, isLoading, fontSize } = this.props;
+    const {
+      name,
+      checked,
+      label,
+      disabled,
+      size,
+      inputId,
+      width,
+      alignItems,
+      isLoading,
+      fontSize,
+      ...props
+    } = this.props;
     const realChecked = checked === undefined ? this.state.checked : checked;
 
     return (
@@ -148,6 +166,8 @@ class StyledCheckbox extends React.Component {
         size={size}
         width={width}
         alignItems={alignItems}
+        data-cy={`checkbox-${name}`}
+        {...props}
       >
         <input id={inputId} name={name} type="checkbox" checked={realChecked} disabled={disabled} readOnly />
         <CustomCheckbox data-cy="custom-checkbox">
@@ -190,6 +210,7 @@ StyledCheckbox.propTypes = {
   isLoading: PropTypes.bool,
   /** Default to center */
   alignItems: PropTypes.string,
+  error: PropTypes.any,
 };
 
 export default StyledCheckbox;

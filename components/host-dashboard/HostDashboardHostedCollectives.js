@@ -1,11 +1,11 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import { useQuery } from '@apollo/client';
+import { isEmpty, omitBy } from 'lodash';
 import { useRouter } from 'next/router';
 import { FormattedMessage } from 'react-intl';
 
 import { API_V2_CONTEXT, gqlV2 } from '../../lib/graphql/helpers';
-import { Router } from '../../server/pages';
 
 import { Box, Flex, Grid } from '../Grid';
 import LoadingPlaceholder from '../LoadingPlaceholder';
@@ -17,7 +17,7 @@ import StyledHr from '../StyledHr';
 import { H1 } from '../Text';
 
 import HostAdminCollectiveCard from './HostAdminCollectiveCard';
-import HostAdminCollectiveFilters from './HostAdminCollectiveFilters';
+import HostAdminCollectiveFilters, { COLLECTIVE_FILTER } from './HostAdminCollectiveFilters';
 
 const COLLECTIVES_PER_PAGE = 20;
 
@@ -41,6 +41,11 @@ const hostedCollectivesQuery = gqlV2/* GraphQL */ `
       isHost
       type
       hostFeePercent
+      plan {
+        id
+        hostFees
+        hostFeeSharePercent
+      }
       memberOf(
         role: HOST
         limit: $limit
@@ -105,17 +110,26 @@ const getVariablesFromQuery = query => {
   };
 };
 
+const ROUTE_PARAMS = ['hostCollectiveSlug', 'view'];
+
+const updateQuery = (router, newParams) => {
+  const query = omitBy({ ...router.query, ...newParams }, (value, key) => !value || ROUTE_PARAMS.includes(key));
+  const pathname = router.asPath.split('?')[0];
+  return router.push({ pathname, query });
+};
+
 const HostDashboardHostedCollectives = ({ hostSlug }) => {
-  const { query } = useRouter() || {};
+  const router = useRouter() || {};
+  const query = router.query;
   const hasFilters = React.useMemo(() => checkIfQueryHasFilters(query), [query]);
   const { data, error, loading, variables } = useQuery(hostedCollectivesQuery, {
-    variables: { hostSlug, ...getVariablesFromQuery(query) },
+    variables: { hostSlug, ...getVariablesFromQuery(omitBy(query, isEmpty)) },
     context: API_V2_CONTEXT,
   });
 
   const hostedMemberships = data?.host?.memberOf;
   return (
-    <Box maxWidth={1000} m="0 auto" py={5} px={2}>
+    <Box maxWidth={1000} m="0 auto" px={2}>
       <Flex alignItems="center" mb={24} flexWrap="wrap">
         <H1 fontSize="32px" lineHeight="40px" py={2} fontWeight="normal">
           <FormattedMessage id="HostedCollectives" defaultMessage="Hosted Collectives" />
@@ -124,7 +138,7 @@ const HostDashboardHostedCollectives = ({ hostSlug }) => {
         <Box p={2}>
           <SearchBar
             defaultValue={query.searchTerm}
-            onSubmit={searchTerm => Router.pushRoute('host.dashboard', { ...query, searchTerm, offset: null })}
+            onSubmit={searchTerm => updateQuery(router, { searchTerm, offset: null })}
           />
         </Box>
       </Flex>
@@ -132,14 +146,9 @@ const HostDashboardHostedCollectives = ({ hostSlug }) => {
       <Box mb={34}>
         {data?.host ? (
           <HostAdminCollectiveFilters
-            filters={query}
-            onChange={queryParams =>
-              Router.pushRoute('host.dashboard', {
-                ...query,
-                ...queryParams,
-                offset: null,
-              })
-            }
+            values={query}
+            filters={[COLLECTIVE_FILTER.SORT_BY, COLLECTIVE_FILTER.FEE_STRUCTURE]}
+            onChange={queryParams => updateQuery(router, { ...queryParams, offset: null })}
           />
         ) : loading ? (
           <LoadingPlaceholder height={70} />
@@ -151,9 +160,9 @@ const HostDashboardHostedCollectives = ({ hostSlug }) => {
       {!error && !loading && !hostedMemberships?.nodes.length ? (
         <MessageBox type="info" withIcon data-cy="zero-collective-message">
           {hasFilters ? (
-            <FormattedMessage id="discover.searchNoResult" defaultMessage="No collective matches the current search." />
+            <FormattedMessage id="discover.searchNoResult" defaultMessage="No Collectives match the current search." />
           ) : (
-            <FormattedMessage id="menu.collective.none" defaultMessage="No collectives yet" />
+            <FormattedMessage id="menu.collective.none" defaultMessage="No Collectives yet" />
           )}
         </MessageBox>
       ) : (
@@ -175,10 +184,11 @@ const HostDashboardHostedCollectives = ({ hostSlug }) => {
           </Grid>
           <Flex mt={5} justifyContent="center">
             <Pagination
-              route="host.dashboard"
+              route={`/${hostSlug}/dashboard/hosted-collectives`}
               total={hostedMemberships?.totalCount}
               limit={variables.limit}
               offset={variables.offset}
+              ignoredQueryParams={ROUTE_PARAMS}
               scrollToTopOnChange
             />
           </Flex>
@@ -190,6 +200,7 @@ const HostDashboardHostedCollectives = ({ hostSlug }) => {
 
 HostDashboardHostedCollectives.propTypes = {
   hostSlug: PropTypes.string.isRequired,
+  router: PropTypes.object,
 };
 
 export default HostDashboardHostedCollectives;

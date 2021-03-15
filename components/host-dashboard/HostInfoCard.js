@@ -132,11 +132,7 @@ const HostInfoCard = ({ host }) => {
             <TransferwiseIcon size={14} color="#9D9FA3" />
           </Box>
           <ColumnTitle>
-            <FormattedMessage
-              id="ServiceBalance"
-              defaultMessage="{service} balance"
-              values={{ service: 'Transferwise' }}
-            />
+            <FormattedMessage id="ServiceBalance" defaultMessage="{service} balance" values={{ service: 'Wise' }} />
           </ColumnTitle>
           <TransferwiseDetailsIcon size={18} balances={host.transferwiseBalances} />
         </Flex>
@@ -166,7 +162,7 @@ const HostInfoCard = ({ host }) => {
         <Container fontSize="10px" lineHeight="15px" color="black.500" my={2} minHeight={35}>
           <LocationAddress location={host.location} showMessageIfEmpty />
         </Container>
-        <StyledLink as={Link} route="editCollective" params={{ slug: host.slug }} fontSize="10px" lineHeight="15px">
+        <StyledLink as={Link} href={`/${host.slug}/edit`} fontSize="10px" lineHeight="15px">
           <FormattedMessage id="Edit" defaultMessage="Edit" />
         </StyledLink>
       </Flex>

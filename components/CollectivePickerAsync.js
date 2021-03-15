@@ -16,7 +16,7 @@ const collectivePickerSearchQuery = gql`
     $limit: Int
     $hostCollectiveIds: [Int]
   ) {
-    search(term: $term, types: $types, limit: $limit, hostCollectiveIds: $hostCollectiveIds, useAlgolia: false) {
+    search(term: $term, types: $types, limit: $limit, hostCollectiveIds: $hostCollectiveIds) {
       id
       collectives {
         id
@@ -24,6 +24,10 @@ const collectivePickerSearchQuery = gql`
         slug
         name
         currency
+        location {
+          address
+          country
+        }
         imageUrl(height: 64)
         hostFeePercent
       }
@@ -41,10 +45,12 @@ const Messages = defineMessages({
     id: 'SearchFor',
     defaultMessage: 'Search for {entity}',
   },
+  // eslint-disable-next-line camelcase
   searchForType_2: {
     id: 'SearchFor2',
     defaultMessage: 'Search for {entity1} or {entity2}',
   },
+  // eslint-disable-next-line camelcase
   searchForType_3: {
     id: 'SearchFor3',
     defaultMessage: 'Search for {entity1}, {entity2} or {entity3}',
@@ -80,7 +86,17 @@ const getPlaceholder = (intl, types) => {
 /**
  * A specialization of `CollectivePicker` that fetches the data based on user search.
  */
-const CollectivePickerAsync = ({ types, limit, hostCollectiveIds, preload, filterResults, searchQuery, ...props }) => {
+const CollectivePickerAsync = ({
+  types,
+  limit,
+  hostCollectiveIds,
+  preload,
+  filterResults,
+  searchQuery,
+  invitable,
+  emptyCustomOptions,
+  ...props
+}) => {
   const [searchCollectives, { loading, data }] = useLazyQuery(searchQuery);
   const [term, setTerm] = React.useState(null);
   const intl = useIntl();
@@ -105,9 +121,12 @@ const CollectivePickerAsync = ({ types, limit, hostCollectiveIds, preload, filte
       placeholder={placeholder}
       types={types}
       useSearchIcon={true}
+      // Only displays the invite option if no results were found:
+      invitable={invitable}
       onInputChange={newTerm => {
         setTerm(newTerm.trim());
       }}
+      customOptions={!term ? emptyCustomOptions : []}
       {...props}
     />
   );
@@ -126,10 +145,15 @@ CollectivePickerAsync.propTypes = {
   preload: PropTypes.bool,
   /** Query to use for the search. Override to add custom fields */
   searchQuery: PropTypes.any.isRequired,
+  /** Custom options that are displayed when the field is empty */
+  emptyCustomOptions: PropTypes.any,
   /** Function to filter results returned by the API */
   filterResults: PropTypes.func,
   /** If true, a permanent option to create a collective will be displayed in the select */
   creatable: PropTypes.bool,
+  /** If true, a permanent option to invite a new user will be displayed in the select */
+  invitable: PropTypes.bool,
+  onInvite: PropTypes.func,
 };
 
 CollectivePickerAsync.defaultProps = {

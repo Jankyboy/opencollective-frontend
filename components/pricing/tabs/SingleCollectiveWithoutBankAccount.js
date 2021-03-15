@@ -2,10 +2,9 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import { gql } from '@apollo/client';
 import { graphql } from '@apollo/client/react/hoc';
+import { withRouter } from 'next/router';
 import { FormattedMessage } from 'react-intl';
 import styled from 'styled-components';
-
-import { Router } from '../../../server/pages';
 
 import Container from '../../Container';
 import { Box, Flex } from '../../Grid';
@@ -33,7 +32,7 @@ const ApplyButton = styled(StyledButton)`
   padding: 10px 20px;
 `;
 
-const SingleCollectiveWithoutBankAccount = ({ data }) => {
+const SingleCollectiveWithoutBankAccount = ({ data, router }) => {
   const hosts = featuredHostsSlugs
     .map(
       slug =>
@@ -46,7 +45,7 @@ const SingleCollectiveWithoutBankAccount = ({ data }) => {
   return (
     <Container mx={3} my={4}>
       <Box display={['block', null, 'none']}>
-        <BackButton onClick={() => Router.pushRoute('pricing')} />
+        <BackButton onClick={() => router.push('/pricing')} />
       </Box>
 
       <Flex justifyContent="center">
@@ -69,35 +68,40 @@ const SingleCollectiveWithoutBankAccount = ({ data }) => {
           <P my={3} fontSize="14px" lineHeight="24px" letterSpacing="-0.012em">
             <FormattedMessage
               id="pricing.fiscalHost.description"
-              defaultMessage="A Fiscal Host is an <strong>organization who offers fund-holding as a service</strong>. They keep your money in their bank account and  <strong>handle things like accounting, taxes, admin, payments, and liability</strong>-so you don’t have to!"
+              defaultMessage="A Fiscal Host is an <strong>organization who offers fund-holding as a service</strong>. They keep your money in their bank account and <strong>handle things like accounting, taxes, admin, payments, and liability</strong>-so you don’t have to!"
               values={I18nFormatters}
             />
           </P>
           <P my={3} fontSize="14px" lineHeight="24px" letterSpacing="-0.012em">
             <FormattedMessage
-              id="pricing.fiscalHost.reasonToJoin"
-              defaultMessage="If you join a Fiscal Host, <strong>you don’t need to go on an Open Collective paid plan</strong>, as your Collective is already included. Each Fiscal Host sets their own fees and acceptance criteria for Collectives. Open Collective keeps a 5% of the donations you raise via credit card payments (Stripe). All other payment methods such as PayPal and Bank transfers are included in your Host's plan."
+              id="newPricing.fiscalHost.reasonToJoin"
+              defaultMessage="Each Fiscal Host sets their own fees and acceptance criteria for Collectives. Depending on the Host, Open Collective may ask financial contributors to give an optional Platform Tip on top of their contribution."
               values={I18nFormatters}
             />
           </P>
           <P my={3} fontSize="14px" lineHeight="24px" letterSpacing="-0.012em">
             <FormattedMessage
-              id="pricing.fiscalHost.applyOpenSource"
-              defaultMessage="If you are an open source project, you can apply to join  the Open Source Collective."
+              id="newPricing.fiscalHost.applyOpenSource"
+              defaultMessage="If you are an Open Source project, you can apply to join the Open Source Collective."
+            />
+            &nbsp;
+            <FormattedMessage
+              id="newPricing.fiscalHost.applyFoundation"
+              defaultMessage="If you are a charity in the USA, you can apply to the Open Collective Foundation."
             />
           </P>
           <P my={3} fontSize="14px" lineHeight="24px" letterSpacing="-0.012em">
             <FormattedMessage
               id="pricing.fiscalHost.featured"
               defaultMessage="Below are some of our most popular hosts or <hosts-link>browse all of them</hosts-link>."
-              values={{ 'hosts-link': getI18nLink({ as: Link, route: '/hosts' }) }}
+              values={{ 'hosts-link': getI18nLink({ as: Link, href: '/hosts' }) }}
             />
           </P>
         </Box>
       </Flex>
       <Container my={4} display="flex" flexDirection="column" alignItems="center">
         <H3 color="black.700" textAlign="center" fontSize="16px" lineHeight="26px" letterSpacing="-0.008em">
-          <FormattedMessage id="pricing.applyFiscalHost" defaultMessage="Apply to a fiscal host" />
+          <FormattedMessage id="pricing.applyFiscalHost" defaultMessage="Apply to a Fiscal Host" />
         </H3>
         <HostsWrapper width={1} justifyContent={['start', null, 'center']} py={4}>
           {hosts.map(collective => (
@@ -139,7 +143,7 @@ const SingleCollectiveWithoutBankAccount = ({ data }) => {
                       />
                     </P>
                     <Box mx={3} my={3}>
-                      <Link route={`/${collective.slug}/apply`}>
+                      <Link href={`/${collective.slug}/apply`}>
                         <ApplyButton buttonStyle="primary" data-cy="host-apply-btn">
                           <FormattedMessage id="host.apply.create.btn" defaultMessage="Apply" />
                         </ApplyButton>
@@ -153,7 +157,7 @@ const SingleCollectiveWithoutBankAccount = ({ data }) => {
         </HostsWrapper>
         <P my={3} fontSize="14px" lineHeight="24px" letterSpacing="-0.012em">
           <StyledLink href={'/hosts'}>
-            <FormattedMessage id="pricing.fiscalHost.more" defaultMessage="See more fiscal hosts" />
+            <FormattedMessage id="pricing.fiscalHost.more" defaultMessage="See more Fiscal Hosts" />
           </StyledLink>
         </P>
       </Container>
@@ -197,4 +201,8 @@ const addPricingHostsData = graphql(pricingHostsQuery, {
   },
 });
 
-export default addPricingHostsData(SingleCollectiveWithoutBankAccount);
+SingleCollectiveWithoutBankAccount.propTypes = {
+  router: PropTypes.object,
+};
+
+export default addPricingHostsData(withRouter(SingleCollectiveWithoutBankAccount));

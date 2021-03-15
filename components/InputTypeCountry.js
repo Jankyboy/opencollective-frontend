@@ -1,16 +1,30 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import countries from 'i18n-iso-countries';
 import countriesEN from 'i18n-iso-countries/langs/en.json';
 import countriesFR from 'i18n-iso-countries/langs/fr.json';
+import countriesPT from 'i18n-iso-countries/langs/pt.json';
 import { isUndefined, orderBy, truncate } from 'lodash';
 import memoizeOne from 'memoize-one';
 import { FormattedMessage, injectIntl } from 'react-intl';
 
+import fetchGeoLocation from '../lib/geolocation_api';
+
 import StyledSelect from './StyledSelect';
 
-countries.registerLocale(countriesEN);
-countries.registerLocale(countriesFR);
+const COUNTRY_NAMES = {
+  en: countriesEN.countries,
+  fr: countriesFR.countries,
+  pt: countriesPT.countries,
+};
+
+const getCountryName = (locale, country) => {
+  const names = COUNTRY_NAMES[locale]?.[country] ?? COUNTRY_NAMES.en[country];
+  if (Array.isArray(names)) {
+    return names[0];
+  } else {
+    return names;
+  }
+};
 
 class InputTypeCountry extends Component {
   static propTypes = {
@@ -23,6 +37,8 @@ class InputTypeCountry extends Component {
     value: PropTypes.string,
     /** Switch between display modes */
     mode: PropTypes.oneOf(['select', 'underlined']),
+    /** If true, we'll try to autodetect country form the IP */
+    autoDetect: PropTypes.bool,
     /** From injectIntl */
     intl: PropTypes.object.isRequired,
     /** Is this input required? */
@@ -31,13 +47,24 @@ class InputTypeCountry extends Component {
 
   static defaultProps = { name: 'country' };
 
+  async componentDidMount() {
+    if (this.props.autoDetect && !this.props.value && !this.props.defaultValue) {
+      const country = await fetchGeoLocation();
+
+      // Country may have been changed by the user by the time geolocation API respond
+      if (country && !this.props.value && !this.props.defaultValue) {
+        this.props.onChange(country);
+      }
+    }
+  }
+
   getCountryLabel(code, locale) {
-    const name = countries.getName(code, locale) || countries.getName(code, 'en');
+    const name = getCountryName(locale, code);
     return `${truncate(name, { length: 30 })} - ${code}`;
   }
 
   getOptions = memoizeOne(locale => {
-    const options = Object.keys(countries.getAlpha2Codes()).map(code => ({
+    const options = Object.keys(COUNTRY_NAMES.en).map(code => ({
       value: code,
       label: this.getCountryLabel(code, locale),
     }));
@@ -50,7 +77,7 @@ class InputTypeCountry extends Component {
       return null;
     }
 
-    const code = country && country.toUpperCase();
+    const code = country.toUpperCase();
     return {
       value: code,
       label: this.getCountryLabel(code, locale),
@@ -58,7 +85,7 @@ class InputTypeCountry extends Component {
   });
 
   render() {
-    const { defaultValue, value, intl, onChange, locale, ...props } = this.props;
+    const { defaultValue, value, intl, onChange, locale, name, ...props } = this.props;
     return (
       <StyledSelect
         name={name}

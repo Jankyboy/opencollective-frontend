@@ -6,12 +6,13 @@ import { withRouter } from 'next/router';
 import { FormattedMessage } from 'react-intl';
 
 import hasFeature, { FEATURES } from '../lib/allowed-features';
+import { NAVBAR_CATEGORIES } from '../lib/collective-sections';
 import { generateNotFoundError } from '../lib/errors';
 import { API_V2_CONTEXT, gqlV2 } from '../lib/graphql/helpers';
-import { Router } from '../server/pages';
 
+import CollectiveNavbar from '../components/collective-navbar';
 import { Sections } from '../components/collective-page/_constants';
-import CollectiveNavbar from '../components/CollectiveNavbar';
+import { collectiveNavbarFieldsFragment } from '../components/collective-page/graphql/fragments';
 import CollectiveThemeProvider from '../components/CollectiveThemeProvider';
 import Container from '../components/Container';
 import Comment from '../components/conversations/Comment';
@@ -47,6 +48,9 @@ const conversationPageQuery = gqlV2/* GraphQL */ `
       settings
       imageUrl
       twitterHandle
+      features {
+        ...NavbarFields
+      }
       conversationsTags {
         id
         tag
@@ -83,6 +87,7 @@ const conversationPageQuery = gqlV2/* GraphQL */ `
     }
   }
   ${commentFieldsFragment}
+  ${collectiveNavbarFieldsFragment}
 `;
 
 const editConversationMutation = gqlV2/* GraphQL */ `
@@ -155,6 +160,7 @@ class ConversationPage extends React.Component {
         }),
       }),
     }).isRequired, // from withData
+    router: PropTypes.object,
   };
 
   static MAX_NB_FOLLOWERS_AVATARS = 4;
@@ -228,7 +234,7 @@ class ConversationPage extends React.Component {
   };
 
   onConversationDeleted = () => {
-    return Router.pushRoute('conversations', { collectiveSlug: this.props.collectiveSlug });
+    return this.props.router.push(`/${this.props.collectiveSlug}/conversations`);
   };
 
   getSuggestedTags(collective) {
@@ -251,7 +257,7 @@ class ConversationPage extends React.Component {
       if (!data || data.error) {
         return <ErrorPage data={data} />;
       } else if (!data.account) {
-        return <ErrorPage error={generateNotFoundError(collectiveSlug, true)} log={false} />;
+        return <ErrorPage error={generateNotFoundError(collectiveSlug)} log={false} />;
       } else if (!hasFeature(data.account, FEATURES.CONVERSATIONS)) {
         return <PageFeatureNotSupported />;
       }
@@ -267,17 +273,21 @@ class ConversationPage extends React.Component {
     const canEdit = LoggedInUser && body && LoggedInUser.canEditComment(body);
     const canDelete = canEdit || (LoggedInUser && LoggedInUser.canEditCollective(collective));
     return (
-      <Page collective={collective} {...this.getPageMetaData(collective)} withoutGlobalStyles>
+      <Page collective={collective} {...this.getPageMetaData(collective)}>
         {data.loading ? (
-          <Container borderTop="1px solid #E8E9EB">
+          <Container>
             <Loading />
           </Container>
         ) : (
           <CollectiveThemeProvider collective={collective}>
-            <Container borderTop="1px solid #E8E9EB" data-cy="conversation-page">
-              <CollectiveNavbar collective={collective} selected={Sections.CONVERSATIONS} />
+            <Container data-cy="conversation-page">
+              <CollectiveNavbar
+                collective={collective}
+                selected={Sections.CONVERSATIONS}
+                selectedCategory={NAVBAR_CATEGORIES.CONNECT}
+              />
               <Box maxWidth={1160} m="0 auto" px={2} py={[4, 5]}>
-                <StyledLink as={Link} color="black.600" route="conversations" params={{ collectiveSlug }}>
+                <StyledLink as={Link} color="black.600" href={`/${collectiveSlug}/conversations`}>
                   &larr; <FormattedMessage id="Conversations.GoBack" defaultMessage="Back to conversations" />
                 </StyledLink>
                 <Box mt={4}>
@@ -338,9 +348,9 @@ class ConversationPage extends React.Component {
                       </Box>
                       <Box display={['none', null, 'block']} flex="0 0 330px" ml={[null, null, null, 4, 5]} mb={4}>
                         <Box my={2} mx={2}>
-                          <Link route="create-conversation" params={{ collectiveSlug }}>
+                          <Link href={`/${collectiveSlug}/conversations/new`}>
                             <StyledButton buttonStyle="primary" width="100%" minWidth={170}>
-                              <FormattedMessage id="conversations.create" defaultMessage="Create conversation" />
+                              <FormattedMessage id="conversations.create" defaultMessage="Create a Conversation" />
                             </StyledButton>
                           </Link>
                         </Box>
@@ -402,7 +412,6 @@ class ConversationPage extends React.Component {
                                   ) : (
                                     <Box mx={2}>
                                       <StyledInputTags
-                                        renderUpdatedTags
                                         suggestedTags={this.getSuggestedTags(collective)}
                                         defaultValue={conversation.tags}
                                         onChange={options => this.handleTagsChange(options, setValue)}

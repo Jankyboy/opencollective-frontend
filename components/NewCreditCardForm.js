@@ -1,14 +1,17 @@
 import React from 'react';
 import PropTypes from 'prop-types';
+import { Question } from '@styled-icons/octicons/Question';
 import { isUndefined } from 'lodash';
-import { defineMessages, injectIntl } from 'react-intl';
+import { FormattedMessage, injectIntl } from 'react-intl';
 import { CardElement, Elements, injectStripe } from 'react-stripe-elements';
 import styled from 'styled-components';
 
 import { GQLV2_PAYMENT_METHOD_TYPES } from '../lib/constants/payment-methods';
 
 import { Flex } from './Grid';
+import { getI18nLink } from './I18nFormatters';
 import StyledCheckbox from './StyledCheckbox';
+import StyledTooltip from './StyledTooltip';
 import { Span } from './Text';
 
 const StyledCardElement = styled(CardElement)`
@@ -40,23 +43,16 @@ class NewCreditCardFormWithoutStripe extends React.Component {
     onReady: PropTypes.func,
     stripe: PropTypes.object,
     useLegacyCallback: PropTypes.bool,
+    defaultIsSaved: PropTypes.bool,
   };
 
   static defaultProps = {
     hasSaveCheckBox: true,
     hidePostalCode: false,
+    defaultIsSaved: true,
   };
 
-  constructor(props) {
-    super(props);
-    this.state = { value: null };
-    this.messages = defineMessages({
-      save: {
-        id: 'creditcard.save',
-        defaultMessage: 'Save credit card to {type, select, user {my account} other {{type} account}}',
-      },
-    });
-  }
+  state = { value: null, showAllErrors: false };
 
   componentDidMount() {
     if (this.props.onReady && this.props.stripe) {
@@ -93,31 +89,53 @@ class NewCreditCardFormWithoutStripe extends React.Component {
   };
 
   onCardChange = e => {
-    if (this.props.useLegacyCallback) {
-      this.props.onChange({ name, type: 'StripeCreditCard', value: e });
+    const { useLegacyCallback, onChange, defaultIsSaved } = this.props;
+    this.setState({ showAllErrors: false });
+    if (useLegacyCallback) {
+      onChange({ name, type: 'StripeCreditCard', value: e });
     } else {
       this.setState(
         ({ value }) => ({
           value: {
             ...value,
             type: GQLV2_PAYMENT_METHOD_TYPES.CREDIT_CARD,
-            isSavedForLater: isUndefined(value?.save) || value.save ? true : false,
+            isSavedForLater: isUndefined(value?.isSavedForLater) || value.isSavedForLater ? defaultIsSaved : false,
             stripeData: e,
           },
         }),
-        () => this.props.onChange(this.state.value),
+        () => onChange(this.state.value),
       );
     }
   };
 
+  getError() {
+    if (this.props.error) {
+      return this.props.error;
+    } else if (this.state.showAllErrors && this.state.value?.stripeData) {
+      const { stripeData } = this.state.value;
+      if (!stripeData.complete) {
+        if (!this.props.hidePostalCode && !stripeData.value?.postalCode) {
+          return (
+            <FormattedMessage
+              id="NewCreditCardForm.PostalCode"
+              defaultMessage="Credit card zip/postal code is required"
+            />
+          );
+        }
+      }
+    }
+  }
+
   render() {
-    const { intl, error, hasSaveCheckBox, hidePostalCode } = this.props;
+    const { hasSaveCheckBox, hidePostalCode, defaultIsSaved } = this.props;
+    const error = this.getError();
     return (
       <Flex flexDirection="column">
         <StyledCardElement
           hidePostalCode={hidePostalCode}
-          onChange={this.onCardChange}
           onReady={input => input.focus()}
+          onChange={this.onCardChange}
+          onBlur={() => this.setState({ showAllErrors: true })}
         />
         {error && (
           <Span display="block" color="red.500" pt={2} fontSize="10px">
@@ -125,13 +143,32 @@ class NewCreditCardFormWithoutStripe extends React.Component {
           </Span>
         )}
         {hasSaveCheckBox && (
-          <Flex mt={3} alignItems="center">
+          <Flex mt={3} alignItems="center" color="black.700">
             <StyledCheckbox
-              defaultChecked
+              defaultChecked={defaultIsSaved}
               name="save"
-              label={intl.formatMessage(this.messages.save, { type: this.getProfileType() })}
               onChange={this.onCheckboxChange}
+              label={<FormattedMessage id="paymentMethod.save" defaultMessage="Remember this payment method" />}
             />
+            &nbsp;&nbsp;
+            <StyledTooltip
+              content={() => (
+                <Span fontWeight="normal">
+                  <FormattedMessage
+                    id="ContributeFAQ.Safe"
+                    defaultMessage="Open Collective doesn't store credit card numbers, instead relying on our payment processor, Stripe, a secure solution that is widely adopted. If our systems are compromised, your credit card information is not at risk, because we simply don't store it. <LearnMoreLink>Learn more</LearnMoreLink>."
+                    values={{
+                      LearnMoreLink: getI18nLink({
+                        openInNewTab: true,
+                        href: 'https://docs.opencollective.com/help/product/security#payments-security',
+                      }),
+                    }}
+                  />
+                </Span>
+              )}
+            >
+              <Question size="1.1em" />
+            </StyledTooltip>
           </Flex>
         )}
       </Flex>

@@ -24,23 +24,16 @@ const messages = defineMessages({
   tag: {
     id: 'Subscriptions.Status',
     defaultMessage:
-      '{status, select, ACTIVE {Active contribution} CANCELLED {Cancelled contribution} ERROR {Error} other {}}',
+      '{status, select, ACTIVE {Active contribution} CANCELLED {Cancelled contribution} ERROR {Error} REJECTED {Rejected contribution} other {}}',
   },
 });
 
-const RecurringContributionsCard = ({
-  collective,
-  status,
-  contribution,
-  createNotification,
-  account,
-  LoggedInUser,
-  ...props
-}) => {
+const RecurringContributionsCard = ({ collective, status, contribution, account, LoggedInUser, ...props }) => {
   const [showPopup, setShowPopup] = useState(false);
   const { formatMessage } = useIntl();
   const isAdmin = LoggedInUser && LoggedInUser.canEditCollective(account);
   const isError = status === ORDER_STATUS.ERROR;
+  const isRejected = status === ORDER_STATUS.REJECTED;
   const isActive = status === ORDER_STATUS.ACTIVE || isError;
 
   return (
@@ -49,81 +42,68 @@ const RecurringContributionsCard = ({
       collective={collective}
       bodyHeight="290px"
       tag={
-        <StyledTag display="inline-block" textTransform="uppercase" my={2} type={isError ? 'error' : undefined}>
+        <StyledTag
+          display="inline-block"
+          textTransform="uppercase"
+          my={2}
+          type={isError || isRejected ? 'error' : undefined}
+        >
           {formatMessage(messages.tag, { status })}
         </StyledTag>
       }
     >
       <Container p={3}>
-        {contribution.platformContributionAmount ? (
-          <Box mb={3}>
-            <P fontSize="14px" lineHeight="20px" fontWeight="400">
-              <FormattedMessage id="membership.totalDonations.title" defaultMessage="Amount contributed" />
+        <Box mb={3}>
+          <P fontSize="14px" lineHeight="20px" fontWeight="400">
+            <FormattedMessage id="membership.totalDonations.title" defaultMessage="Amount contributed" />
+          </P>
+          <div>
+            <P fontSize="14px" lineHeight="20px" fontWeight="bold" data-cy="recurring-contribution-amount-contributed">
+              <FormattedMoneyAmount
+                amount={contribution.amount.valueInCents}
+                interval={contribution.frequency.toLowerCase().slice(0, -2)}
+                currency={contribution.amount.currency}
+              />
             </P>
-            <div>
-              <P
-                fontSize="14px"
-                lineHeight="20px"
-                fontWeight="bold"
-                data-cy="recurring-contribution-amount-contributed"
-              >
-                <FormattedMoneyAmount
-                  amount={(contribution.amount.value + contribution.platformContributionAmount.value) * 100}
-                  interval={contribution.frequency.toLowerCase().slice(0, -2)}
-                  currency={contribution.amount.currency}
-                />
-              </P>
+            {contribution.platformContributionAmount && (
               <StyledTooltip
                 content={() => (
                   <FormattedMessage
                     id="Subscriptions.FeesOnTopTooltip"
-                    defaultMessage="Contribution to collective plus contribution to the platform"
+                    defaultMessage="Contribution plus Platform Tip"
                   />
                 )}
               >
                 <P fontSize="12px" lineHeight="20px" color="black.700">
                   (
                   <FormattedMoneyAmount
-                    amount={contribution.amount.value * 100}
+                    amount={contribution.amount.valueInCents - contribution.platformContributionAmount.valueInCents}
                     currency={contribution.amount.currency}
                     showCurrencyCode={false}
-                    precision={0}
+                    precision="auto"
                     amountStyles={{ fontWeight: 'normal', color: 'black.700' }}
-                  />{' '}
-                  +{' '}
+                  />
+                  {' + '}
                   <FormattedMoneyAmount
-                    amount={contribution.platformContributionAmount.value * 100}
+                    amount={contribution.platformContributionAmount.valueInCents}
                     currency={contribution.amount.currency}
                     showCurrencyCode={false}
-                    precision={0}
+                    precision="auto"
                     amountStyles={{ fontWeight: 'normal', color: 'black.700' }}
                   />
                   )
                 </P>
               </StyledTooltip>
-            </div>
-          </Box>
-        ) : (
-          <Box mb={3}>
-            <P fontSize="14px" lineHeight="20px" fontWeight="400">
-              <FormattedMessage id="membership.totalDonations.title" defaultMessage="Amount contributed" />
-            </P>
-            <P fontSize="14px" lineHeight="20px" fontWeight="bold" data-cy="recurring-contribution-amount-contributed">
-              <FormattedMoneyAmount
-                amount={contribution.amount.value * 100}
-                interval={contribution.frequency.toLowerCase().slice(0, -2)}
-                currency={contribution.amount.currency}
-              />
-            </P>
-          </Box>
-        )}
+            )}
+          </div>
+        </Box>
         <Box mb={3}>
           <P fontSize="14px" lineHeight="20px" fontWeight="400">
             <FormattedMessage id="Subscriptions.ContributedToDate" defaultMessage="Contributed to date" />
           </P>
           <P fontSize="14px" lineHeight="20px">
             <FormattedMoneyAmount
-              amount={contribution.totalDonations.value * 100}
+              amount={contribution.totalDonations.valueInCents}
               currency={contribution.totalDonations.currency}
             />
           </P>
@@ -144,7 +124,6 @@ const RecurringContributionsCard = ({
           contribution={contribution}
           status={status}
           setShowPopup={setShowPopup}
-          createNotification={createNotification}
           account={account}
         />
       )}
@@ -162,7 +141,6 @@ RecurringContributionsCard.propTypes = {
   }),
   status: PropTypes.string.isRequired,
   LoggedInUser: PropTypes.object,
-  createNotification: PropTypes.func,
   account: PropTypes.object.isRequired,
 };
 

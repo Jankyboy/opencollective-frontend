@@ -22,8 +22,8 @@ const defaults = {
   CLIENT_ANALYTICS_ENABLED: false,
   ONBOARDING_MODAL: true,
   NEW_HOST_APPLICATION_FLOW: false,
-  NEW_CONTRIBUTION_FLOW: false,
-  ENABLE_GUEST_CONTRIBUTIONS: false,
+  REJECT_CONTRIBUTION: false,
+  REJECTED_CATEGORIES: false,
   TW_API_COLLECTIVE_SLUG: 'opencollective-host',
   OC_APPLICATION: 'frontend',
   OC_ENV: process.env.NODE_ENV || 'development',
@@ -31,7 +31,7 @@ const defaults = {
 };
 
 if (['production', 'staging'].includes(process.env.OC_ENV)) {
-  defaults.TW_API_COLLECTIVE_SLUG = 'opencollectiveinc';
+  defaults.TW_API_COLLECTIVE_SLUG = 'opencollective';
 }
 
 if (['e2e'].includes(process.env.OC_ENV)) {

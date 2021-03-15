@@ -61,7 +61,7 @@ describe('Collective page', () => {
       cy.get('[data-cy=edit-collective-display-features] [data-cy=edit-main-color-btn]').click();
       cy.get('[data-cy=collective-color-picker-card] [data-cy=collective-color-picker-options-btn]:first').click();
       cy.get('[data-cy=collective-color-picker-save-btn]').then($saveBtn => {
-        cy.wrap($saveBtn).should('have.css', 'background-color', 'rgb(193, 40, 34)');
+        cy.wrap($saveBtn).should('have.css', 'background-color', 'rgb(191, 40, 33)');
         cy.wrap($saveBtn).click();
       });
     });
@@ -83,18 +83,18 @@ describe('Collective page', () => {
 
   describe('Contribute section', () => {
     it('Show tiers with default descriptions', () => {
-      const oneTimeContributionMsg = 'Make a custom one time or recurring contribution.';
+      const oneTimeContributionMsg = 'Make a custom one-time or recurring contribution.';
       cy.contains('#section-contribute', 'Custom contribution');
       cy.contains('#section-contribute', 'Donation');
       cy.contains('#section-contribute', oneTimeContributionMsg);
       cy.contains('#section-contribute', 'backer');
-      cy.contains('#section-contribute', 'Become a backer for $5.00 per month and help us sustain our activities!');
+      cy.contains('#section-contribute', 'Become a backer for $5.00 per month and support us');
       cy.contains('#section-contribute', 'sponsor');
-      cy.contains('#section-contribute', 'Become a sponsor for $100.00 per month and help us sustain our activities!');
+      cy.contains('#section-contribute', 'Become a sponsor for $100.00 per month and support us');
     });
 
     it('Has a link to show all tiers', () => {
-      cy.contains(`#section-contribute a[href="/${collectiveSlug}/contribute"]`, 'View all the ways to contribute');
+      cy.contains(`#section-contribute a[href="/${collectiveSlug}/contribute"]`, 'All ways to contribute');
     });
 
     it('Has a link to create new tiers and events if admin', () => {
@@ -115,6 +115,7 @@ describe('Collective page', () => {
       cy.wait(3000);
       cy.get('[data-cy=edit-update-form]').within(() => {
         cy.get('[data-cy=titleInput]').type('Sample Update');
+        cy.get('[data-cy="update-content-editor"] trix-editor').type('Hello World');
         cy.get('[data-cy=edit-update-submit-btn]').click();
       });
       cy.get('[data-cy=PublishUpdateBtn] button').click();
@@ -127,14 +128,6 @@ describe('Collective page', () => {
       scrollToSection(Sections.UPDATES);
       cy.get('[data-cy=view-all-updates-btn]').click();
       cy.get('[data-cy=updatesList]').should('have.length', 1);
-    });
-  });
-
-  describe('Budget section', () => {
-    it("Shows today's balance and estimated annual budget", () => {
-      scrollToSection(Sections.BUDGET);
-      cy.get('[data-cy=budgetSection-today-balance]').contains('$0.00');
-      cy.get('[data-cy=budgetSection-estimated-budget]').contains('$0.00');
     });
   });
 
@@ -151,7 +144,7 @@ describe('Collective page', () => {
     it('Can add description to about section', () => {
       const richDescription = 'Hello world!';
       scrollToSection(Sections.ABOUT);
-      cy.contains('#section-about button', 'Add a description').click();
+      cy.contains('#section-about button', 'Add description').click();
       // {ctrl}b fails on macos
       // {ctrl} maps control key & {meta} maps command key
       const ctrlOrMetaKey = Cypress.platform === 'darwin' ? '{meta}' : '{ctrl}';
@@ -193,8 +186,11 @@ describe('Collective page with euro currency', () => {
 
     it('Has button to view all transactions and expenses', () => {
       scrollToSection(Sections.BUDGET);
-      cy.get('[data-cy=view-all-transactions-btn]').should('be.visible');
-      cy.get('[data-cy=view-all-expenses-btn]').should('be.visible');
+      cy.get('[data-cy="section-budget"] [data-cy="filter-button expenses"]').click();
+      cy.get('[data-cy="section-budget"] [data-cy=view-all-expenses-link]').should('be.visible');
+
+      cy.get('[data-cy="section-budget"] [data-cy="filter-button transactions"]').click();
+      cy.get('[data-cy="section-budget"] [data-cy=view-all-transactions-link]').should('be.visible');
     });
   });
 });
@@ -205,12 +201,12 @@ describe('Edit public message after contribution', () => {
       /** Make a donation by a new user */
       cy.signup({ redirect: `/${slug}/donate`, visitParams: { onBeforeLoad: mockRecaptcha } }).then(() => {
         // SECTION: Make a donation to the collective
-        cy.contains('button', 'Next step').click();
+        cy.get('button[data-cy="cf-next-step"]').click();
         cy.wait(50);
-        cy.contains('button', 'Next step').click();
+        cy.get('button[data-cy="cf-next-step"]').click();
         cy.wait(1000); // Wait for stripe to be loaded
         cy.fillStripeInput();
-        cy.contains('button', 'Make contribution').click();
+        cy.contains('button', 'Contribute').click();
         cy.wait(1000); // It takes a little bit of time to create the order.
         // Wait for the order to succeed
         cy.getByDataCy('order-success', { timeout: 20000 });

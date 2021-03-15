@@ -2,10 +2,9 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import { FormattedMessage } from 'react-intl';
 
-import { Link } from '../server/pages';
-
 import Container from './Container';
 import { Box, Flex } from './Grid';
+import Link from './Link';
 import StyledButton from './StyledButton';
 import StyledCard from './StyledCard';
 import StyledInput from './StyledInput';
@@ -40,13 +39,19 @@ export default class SignIn extends React.Component {
   renderSecondaryAction(message) {
     const { loading, onSecondaryAction } = this.props;
     return typeof onSecondaryAction === 'string' ? (
-      <Link route={onSecondaryAction} passHref>
-        <StyledLink disabled={loading} fontSize="14px">
+      <Link href={onSecondaryAction}>
+        <StyledLink disabled={loading} fontSize="14px" data-cy="signin-secondary-action-btn">
           {message}&nbsp;→
         </StyledLink>
       </Link>
     ) : (
-      <StyledButton asLink fontSize="14px" onClick={onSecondaryAction} disabled={loading}>
+      <StyledButton
+        asLink
+        fontSize="14px"
+        onClick={onSecondaryAction}
+        disabled={loading}
+        data-cy="signin-secondary-action-btn"
+      >
         {message}&nbsp;→
       </StyledButton>
     );
@@ -96,7 +101,7 @@ export default class SignIn extends React.Component {
                 event.preventDefault();
                 this.setState({ error: event.target.validationMessage });
               }}
-              placeholder="i.e. yourname@yourhost.com"
+              placeholder="e.g. yourname@yourhost.com"
               required
               value={email}
               type="email"
@@ -111,8 +116,9 @@ export default class SignIn extends React.Component {
               minWidth={100}
               ml={3}
               type="submit"
+              whiteSpace="nowrap"
             >
-              Sign In
+              <FormattedMessage id="signIn" defaultMessage="Sign In" />
             </StyledButton>
           </Flex>
           {error && showError && (

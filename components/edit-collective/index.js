@@ -1,13 +1,14 @@
 import React from 'react';
 import PropTypes from 'prop-types';
+import { withRouter } from 'next/router';
 import { defineMessages, injectIntl } from 'react-intl';
+import styled from 'styled-components';
 
 import { defaultBackgroundImage } from '../../lib/constants/collectives';
 import { getErrorFromGraphqlException } from '../../lib/errors';
-import { Router } from '../../server/pages';
 
 import Body from '../Body';
-import CollectiveNavbar from '../CollectiveNavbar';
+import CollectiveNavbar from '../collective-navbar';
 import Footer from '../Footer';
 import Header from '../Header';
 import NotificationBar from '../NotificationBar';
@@ -16,6 +17,22 @@ import { withUser } from '../UserProvider';
 
 import Form from './Form';
 
+const EditCollectiveContainer = styled.div`
+  .success {
+    color: green;
+  }
+  .error {
+    color: red;
+  }
+  .login {
+    text-align: center;
+  }
+  .actions {
+    text-align: center;
+    margin-bottom: 5rem;
+  }
+`;
+
 class EditCollective extends React.Component {
   static propTypes = {
     collective: PropTypes.object.isRequired, // passed from Page with addCollectiveToEditData
@@ -23,6 +40,7 @@ class EditCollective extends React.Component {
     refetchLoggedInUser: PropTypes.func.isRequired, // passed from Page with withUser
     editCollective: PropTypes.func.isRequired, // passed from Page with addEditCollectiveMutation
     intl: PropTypes.object.isRequired, // from injectIntl
+    router: PropTypes.object,
   };
 
   constructor(props) {
@@ -36,7 +54,7 @@ class EditCollective extends React.Component {
       },
       'collective.isArchived.edit.description': {
         id: 'collective.isArchived.edit.description',
-        defaultMessage: 'This {type} has been archived and can no longer be used for any activities.',
+        defaultMessage: 'This {type} has been archived and is no longer active.',
       },
       'user.isArchived': {
         id: 'user.isArchived',
@@ -44,7 +62,7 @@ class EditCollective extends React.Component {
       },
       'user.isArchived.edit.description': {
         id: 'user.isArchived.edit.description',
-        defaultMessage: 'This account has been archived and can no longer be used for any activities.',
+        defaultMessage: 'This account has been archived is no longer active.',
       },
     });
   }
@@ -62,25 +80,24 @@ class EditCollective extends React.Component {
     collective.settings = {
       ...this.props.collective.settings,
       ...collective.settings,
-      apply: collective.application,
       tos: collective.tos,
     };
 
     delete collective.tos;
-    delete collective.application;
 
     this.setState({ status: 'loading' });
-
     try {
       const response = await this.props.editCollective(collective);
       const updatedCollective = response.data.editCollective;
       this.setState({ status: 'saved', result: { error: null } });
-      if (Router.router.query.slug !== updatedCollective.slug) {
-        Router.replaceRoute('editCollective', {
-          ...Router.router.query,
-          slug: updatedCollective.slug,
+      const currentSlug = this.props.router.query.eventSlug ?? this.props.router.query.slug;
+      if (currentSlug !== updatedCollective.slug) {
+        this.props.router.replace({
+          pathname: `/${updatedCollective.slug}/edit`,
+          query: {
+            ...this.props.router.query,
+          },
         });
-
         await this.props.refetchLoggedInUser();
       } else {
         setTimeout(() => {
@@ -117,25 +134,7 @@ class EditCollective extends React.Component {
     }
 
     return (
-      <div className="EditCollective">
-        <style jsx>
-          {`
-            .success {
-              color: green;
-            }
-            .error {
-              color: red;
-            }
-            .login {
-              text-align: center;
-            }
-            .actions {
-              text-align: center;
-              margin-bottom: 5rem;
-            }
-          `}
-        </style>
-
+      <EditCollectiveContainer>
         <Header collective={collective} className={this.state.status} LoggedInUser={LoggedInUser} />
 
         <Body>
@@ -146,7 +145,7 @@ class EditCollective extends React.Component {
               description={notification.description}
             />
           )}
-          <CollectiveNavbar collective={collective} isAdmin={canEditCollective} onlyInfos={true} />
+          <CollectiveNavbar collective={collective} isAdmin={canEditCollective} />
           <div className="content">
             {!canEditCollective && (
               <div className="login">
@@ -177,9 +176,9 @@ class EditCollective extends React.Component {
           </div>
         </Body>
         <Footer />
-      </div>
+      </EditCollectiveContainer>
     );
   }
 }
 
-export default injectIntl(withUser(EditCollective));
+export default injectIntl(withUser(withRouter(EditCollective)));

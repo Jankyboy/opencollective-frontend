@@ -10,12 +10,13 @@ import ConversationsList from '../../conversations/ConversationsList';
 import { conversationListFragment } from '../../conversations/graphql';
 import { Box, Flex } from '../../Grid';
 import Link from '../../Link';
+import MessageBox from '../../MessageBox';
 import StyledButton from '../../StyledButton';
-import { P } from '../../Text';
+import { P, Span } from '../../Text';
 import ContainerSectionContent from '../ContainerSectionContent';
 import SectionTitle from '../SectionTitle';
 
-const conversationsSectionQuery = gqlV2/* GraphQL */ `
+export const conversationsSectionQuery = gqlV2/* GraphQL */ `
   query ConversationsSection($collectiveSlug: String!) {
     account(slug: $collectiveSlug, throwIfMissing: false) {
       id
@@ -54,38 +55,42 @@ class SectionConversations extends React.PureComponent {
     const conversations = get(data, 'account.conversations', {});
 
     return (
-      <ContainerSectionContent pt={5} pb={3}>
-        <SectionTitle mb={24}>
+      <ContainerSectionContent pb={4}>
+        <SectionTitle fontSize={['20px', '24px', '32px']} color="black.700" mb={24}>
           <FormattedMessage id="conversations" defaultMessage="Conversations" />
         </SectionTitle>
         <Flex mb={4} justifyContent="space-between" alignItems="center" flexWrap="wrap">
-          <P color="black.700" my={2} mr={2} css={{ flex: '1 0 50%', maxWidth: 780 }}>
+          <P color="black.700" my={2} css={{ flex: '1 0 50%', maxWidth: 700 }}>
             <FormattedMessage
               id="conversations.subtitle"
-              defaultMessage="Let’s get the ball rolling! This is where things get planned and sometimes this is where things get done. Ask questions, thank people for their efforts, and contribute your skills to the service of the community."
+              defaultMessage="Let’s get the discussion going! This is a space for the community to converse, ask questions, say thank you, and get things done together."
             />
           </P>
-          <Link route="create-conversation" params={{ collectiveSlug: collective.slug }}>
-            <StyledButton buttonStyle="primary">
-              <FormattedMessage id="conversations.create" defaultMessage="Create conversation" />
+          <Link href={`/${collective.slug}/conversations/new`}>
+            <StyledButton buttonStyle="primary" my={[2, 0]}>
+              <Span fontSize="16px" fontWeight="bold" mr={2}>
+                +
+              </Span>
+              <FormattedMessage id="conversations.create" defaultMessage="Create a Conversation" />
             </StyledButton>
           </Link>
         </Flex>
         {isEmpty(conversations.nodes) ? (
-          <Box my={5}>
-            <Link route="create-conversation" params={{ collectiveSlug: collective.slug }}>
-              <StyledButton buttonStyle="primary" buttonSize="large">
-                <FormattedMessage id="conversations.createFirst" defaultMessage="Start a new conversation" />
-              </StyledButton>
-            </Link>
-          </Box>
+          <div>
+            <MessageBox my={[3, 5]} type="info" withIcon maxWidth={700} fontStyle="italic" fontSize="14px">
+              <FormattedMessage
+                id="SectionConversations.PostFirst"
+                defaultMessage="Use this section to get the community involved in open discussions."
+              />
+            </MessageBox>
+          </div>
         ) : (
-          <Box>
+          <Box mt={[3, 5]} mb={[3, 4]}>
             <ConversationsList collectiveSlug={collective.slug} conversations={conversations.nodes} />
             {conversations.totalCount > 3 && (
-              <Link route="conversations" params={{ collectiveSlug: collective.slug }}>
+              <Link href={`/${collective.slug}/conversations`}>
                 <StyledButton width="100%" mt={4} buttonSize="small" fontSize="14px">
-                  <FormattedMessage id="Conversations.ViewAll" defaultMessage="View all conversations" /> →
+                  <FormattedMessage id="Conversations.ViewAll" defaultMessage="View all Conversations" /> →
                 </StyledButton>
               </Link>
             )}
@@ -98,9 +103,13 @@ class SectionConversations extends React.PureComponent {
 
 const addConversationsSectionData = graphql(conversationsSectionQuery, {
   options: props => ({
-    variables: { collectiveSlug: props.collective.slug },
+    variables: getConversationsSectionQueryVariables(props.collective.slug),
     context: API_V2_CONTEXT,
   }),
 });
+
+export const getConversationsSectionQueryVariables = slug => {
+  return { collectiveSlug: slug };
+};
 
 export default addConversationsSectionData(SectionConversations);

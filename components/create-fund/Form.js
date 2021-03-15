@@ -3,8 +3,9 @@ import PropTypes from 'prop-types';
 import { Field, Form, Formik } from 'formik';
 import { withRouter } from 'next/router';
 import { defineMessages, FormattedMessage, injectIntl } from 'react-intl';
-import slugify from 'slugify';
 import styled from 'styled-components';
+
+import { suggestSlug } from '../../lib/collective.lib';
 
 import Container from '../Container';
 import { Box, Flex } from '../Grid';
@@ -33,15 +34,15 @@ const placeholders = {
 
 const messages = defineMessages({
   nameLabel: { id: 'createFund.form.nameLabel', defaultMessage: "What's the name of your fund?" },
-  slugLabel: { id: 'createCollective.form.slugLabel', defaultMessage: 'What URL would you like?' },
+  slugLabel: { id: 'createCollective.form.slugLabel', defaultMessage: 'Set your URL' },
   suggestedLabel: { id: 'createCollective.form.suggestedLabel', defaultMessage: 'Suggested' },
   descriptionLabel: {
     id: 'createFund.form.descriptionLabel',
     defaultMessage: 'What does your fund do?',
   },
   descriptionHint: {
-    id: 'createFund.form.descriptionHint',
-    defaultMessage: 'Write a short description of your Fund (150 characters max)',
+    id: 'createCollective.form.descriptionHint',
+    defaultMessage: 'Write a short description (150 characters max)',
   },
   descriptionPlaceholder: {
     id: 'create.collective.placeholder',
@@ -127,7 +128,7 @@ class CreateFundForm extends React.Component {
                 values={{
                   faqLink: (
                     <StyledLink href="https://docs.opencollective.foundation/" openInNewTab>
-                      <FormattedMessage id="createFund.subtitle.faq" defaultMessage="FAQs here." />
+                      <FormattedMessage id="createFund.subtitle.faq" defaultMessage="FAQ here." />
                     </StyledLink>
                   ),
                 }}
@@ -154,19 +155,9 @@ class CreateFundForm extends React.Component {
               {formik => {
                 const { values, handleSubmit, errors, touched, setFieldValue } = formik;
 
-                const suggestedSlug = value => {
-                  const slugOptions = {
-                    replacement: '-',
-                    lower: true,
-                    strict: true,
-                  };
-
-                  return slugify(value, slugOptions);
-                };
-
                 const handleSlugChange = e => {
                   if (!touched.slug) {
-                    setFieldValue('slug', suggestedSlug(e.target.value));
+                    setFieldValue('slug', suggestSlug(e.target.value));
                   }
                 };
 

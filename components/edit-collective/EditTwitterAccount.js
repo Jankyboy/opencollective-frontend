@@ -3,11 +3,24 @@ import PropTypes from 'prop-types';
 import { gql } from '@apollo/client';
 import { graphql } from '@apollo/client/react/hoc';
 import { cloneDeep, pick } from 'lodash';
-import { Col, Form, Row } from 'react-bootstrap';
 import { defineMessages, FormattedMessage, injectIntl } from 'react-intl';
+import styled from 'styled-components';
 
+import { Box, Flex } from '../Grid';
 import InputField from '../InputField';
-import SmallButton from '../SmallButton';
+import StyledButton from '../StyledButton';
+
+const NotificationSettingsContainer = styled.div`
+  label {
+    margin-top: 0.7rem;
+  }
+  .form-group {
+    margin-bottom: 0rem;
+  }
+  .inputField textarea {
+    height: 14rem;
+  }
+`;
 
 class EditTwitterAccount extends React.Component {
   static propTypes = {
@@ -25,17 +38,16 @@ class EditTwitterAccount extends React.Component {
     this.messages = defineMessages({
       'newBacker.toggle.label': {
         id: 'connectedAccounts.twitter.newBacker.toggle.label',
-        defaultMessage: 'New backers',
+        defaultMessage: 'New financial contributors',
       },
       'newBacker.toggle.description': {
         id: 'connectedAccounts.twitter.newBacker.toggle.description',
         defaultMessage:
-          'Whenever you have a new backer that has provided a twitter username, a tweet will be sent from your connected account',
+          'Whenever you have a new contributor that has provided a twitter username, a tweet will be sent from your connected account',
       },
       'newBacker.tweet': {
         id: 'connectedAccounts.twitter.newBacker.tweet',
-        defaultMessage:
-          '{backerTwitterHandle} thank you for your {amount} donation 🙏 - your contribution makes a difference!',
+        defaultMessage: '{backerTwitterHandle} thank you for your contribution of {amount} 🙏 - it makes a difference!',
       },
       'monthlyStats.toggle.label': {
         id: 'connectedAccounts.twitter.monthlyStats.toggle.label',
@@ -44,7 +56,7 @@ class EditTwitterAccount extends React.Component {
       'monthlyStats.toggle.description': {
         id: 'connectedAccounts.twitter.monthlyStats.toggle.description',
         defaultMessage:
-          'Every first of the month, automatically send a public tweet with the latest stats, the new backers and the all time top backers',
+          'On the first of the month, automatically send a tweet with your latest stats (new and top contributors)',
       },
       'updatePublished.toggle.label': {
         id: 'connectedAccounts.twitter.updatePublished.toggle.label',
@@ -52,44 +64,43 @@ class EditTwitterAccount extends React.Component {
       },
       'updatePublished.toggle.description': {
         id: 'connectedAccounts.twitter.updatePublished.toggle.description',
-        defaultMessage: 'Send a tweet whenever you publish an update',
+        defaultMessage: 'Send a tweet whenever you publish an Update',
       },
       'tenBackers.toggle.label': {
         id: 'connectedAccounts.twitter.tenBackers.toggle.label',
-        defaultMessage: '10 backers',
+        defaultMessage: '10 contributors',
       },
       'tenBackers.toggle.description': {
         id: 'connectedAccounts.twitter.tenBackers.toggle.description',
-        defaultMessage: 'Whenever one of the collectives that you are hosting reaches 10 backers',
+        defaultMessage: 'Whenever one of the Collectives that you are Hosting reaches 10 contributors',
       },
       'tenBackers.tweet': {
         id: 'connectedAccounts.twitter.tenBackers.tweet',
-        defaultMessage:
-          '🎉 {collective} just reached 10 backers! Thank you {topBackersTwitterHandles} 🙌  Support them too!',
+        defaultMessage: '🎉 {collective} just reached 10 contributors! Thank you {topBackersTwitterHandles}! 🙌',
       },
       'oneHundredBackers.toggle.label': {
         id: 'connectedAccounts.twitter.oneHundredBackers.toggle.label',
-        defaultMessage: '100 backers',
+        defaultMessage: '100 contributors',
       },
       'oneHundredBackers.toggle.description': {
         id: 'connectedAccounts.twitter.oneHundredBackers.toggle.description',
-        defaultMessage: 'Whenever one of the collectives that you are hosting reaches 100 backers',
+        defaultMessage: 'Whenever one of the Collectives that you are Hosting reaches 100 contributors',
       },
       'oneHundredBackers.tweet': {
         id: 'connectedAccounts.twitter.oneHundredBackers.tweet',
-        defaultMessage: '🎉 {collective} just reached 100 backers!! 🙌  Support them too!',
+        defaultMessage: '🎉 {collective} just reached 100 contributors!! 🙌.',
       },
       'oneThousandBackers.toggle.label': {
         id: 'connectedAccounts.twitter.oneThousandBackers.toggle.label',
-        defaultMessage: '1,000 backers',
+        defaultMessage: '1,000 contributos',
       },
       'oneThousandBackers.toggle.description': {
         id: 'connectedAccounts.twitter.oneThousandBackers.toggle.description',
-        defaultMessage: 'Whenever one of the collectives that you are hosting reaches 1,000 backers',
+        defaultMessage: 'Whenever one of the Collectives that you are Hosting reaches 1,000 contributors',
       },
       'oneThousandBackers.tweet': {
         id: 'connectedAccounts.twitter.oneThousandBackers.tweet',
-        defaultMessage: '🎉 {collective} just reached 1,000 backers!! 🙌  Support them too!',
+        defaultMessage: 'Wow! 🎉 {collective} just reached 1,000 contributors!! 🙌',
       },
     });
 
@@ -133,22 +144,9 @@ class EditTwitterAccount extends React.Component {
     const { connectedAccount } = this.state;
 
     return (
-      <div className="notificationSettings" key={notificationType}>
-        <style jsx>
-          {`
-            .notificationSettings :global(label) {
-              margin-top: 0.7rem;
-            }
-            .notificationSettings :global(.form-group) {
-              margin-bottom: 0rem;
-            }
-            .notificationSettings :global(.inputField textarea) {
-              height: 14rem;
-            }
-          `}
-        </style>
-        <Row>
-          <Col sm={12}>
+      <NotificationSettingsContainer key={notificationType}>
+        <Flex flexWrap="wrap">
+          <Box width={1}>
             <InputField
               type="switch"
               name={`${notificationType}.active`}
@@ -175,33 +173,33 @@ class EditTwitterAccount extends React.Component {
                 onChange={tweet => this.handleChange(notificationType, 'tweet', tweet)}
               />
             )}
-          </Col>
-        </Row>
-      </div>
+          </Box>
+        </Flex>
+      </NotificationSettingsContainer>
     );
   }
 
   render() {
     return (
       <div className="EditTwitterAccount">
-        <Form horizontal>
+        <form>
           <details>
             <summary>
               <FormattedMessage id="Settings" defaultMessage="Settings" />
             </summary>
             {this.notificationTypes.map(this.renderNotification)}
-            <Row>
-              <Col sm={3} />
-              <Col sm={9}>
+            <Flex flexWrap="wrap">
+              <Box width={[1, 3 / 12]} />
+              <Box width={[1, 9 / 12]}>
                 {this.state.isModified && (
-                  <SmallButton className="default" onClick={this.onClick}>
+                  <StyledButton buttonSize="small" onClick={this.onClick}>
                     <FormattedMessage id="save" defaultMessage="Save" />
-                  </SmallButton>
+                  </StyledButton>
                 )}
-              </Col>
-            </Row>
+              </Box>
+            </Flex>
           </details>
-        </Form>
+        </form>
       </div>
     );
   }

@@ -88,7 +88,7 @@ const learningChannels = [
   {
     id: 'openFinances',
     name: 'Open Finances',
-    link: 'https://opencollective.com/opencollectiveinc',
+    link: 'https://opencollective.com/opencollective',
     desktopItemOrder: 5,
   },
   {
@@ -126,8 +126,7 @@ const messages = defineMessages({
   },
   'home.learnMore.openSourceCode': {
     id: 'home.learnMore.OpenSourceCode',
-    defaultMessage:
-      'Our code base is open source, you can branch or contribute in different ways in GitHub. Check it out!',
+    defaultMessage: 'Our code is open source. You can contribute! Check it out on GitHub.',
   },
   'home.learnMore.openSourceCode.buttonText': {
     id: 'home.learnMore.openSourceCode.buttonText',
@@ -231,7 +230,7 @@ const LearnMore = () => {
         <DonateButtonWrapper width="287px" height="300px" my={3} ml={[null, 4]}>
           <DonateButtonBG />
           <DonateButtonBGHover />
-          <Link route="/opencollective/donate">
+          <Link href="/opencollective/donate">
             <DonateButton buttonStyle="dark" minWidth={'97'}>
               <FormattedMessage id="home.donate" defaultMessage="Donate" />
             </DonateButton>

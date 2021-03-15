@@ -4,7 +4,6 @@ import React from 'react';
 import { pick } from 'lodash';
 import Document, { Head, Html, Main, NextScript } from 'next/document';
 import { ServerStyleSheet } from 'styled-components';
-import flush from 'styled-jsx/server';
 
 import { parseToBoolean } from '../lib/utils';
 
@@ -32,32 +31,22 @@ export default class IntlDocument extends Document {
     }
 
     try {
-      // The new recommended way to process Styled Components
-      // unfortunately not compatible with styled-jsx as is
-      // ctx.renderPage = () =>
-      //   originalRenderPage({
-      //     enhanceApp: App => props => sheet.collectStyles(<App {...props} />)
-      //   })
-
-      // The old recommended way to process Styled Components
-      const page = originalRenderPage(App => props => sheet.collectStyles(<App {...props} />));
-
-      const styledJsxStyles = flush();
-      const styledComponentsStyles = sheet.getStyleElement();
+      ctx.renderPage = () =>
+        originalRenderPage({
+          enhanceApp: App => props => sheet.collectStyles(<App {...props} />),
+        });
 
       const initialProps = await Document.getInitialProps(ctx);
 
       return {
         ...initialProps,
-        ...page,
         locale,
         localeDataScript,
         clientAnalytics,
         styles: (
           <React.Fragment>
             {initialProps.styles}
-            {styledJsxStyles}
-            {styledComponentsStyles}
+            {sheet.getStyleElement()}
           </React.Fragment>
         ),
       };
@@ -72,9 +61,9 @@ export default class IntlDocument extends Document {
     // They can later be read with getEnvVar()
     // Please, NEVER SECRETS!
     props.__NEXT_DATA__.env = pick(process.env, [
-      'ENABLE_GUEST_CONTRIBUTIONS',
       'IMAGES_URL',
-      'NEW_CONTRIBUTION_FLOW',
+      'REJECT_CONTRIBUTION',
+      'REJECTED_CATEGORIES',
       'PAYPAL_ENVIRONMENT',
       'STRIPE_KEY',
       'SENTRY_DSN',

@@ -8,6 +8,7 @@ import { defineMessages, FormattedMessage } from 'react-intl';
 import { Popper } from 'react-popper';
 import styled from 'styled-components';
 
+import { formatErrorMessage, getErrorFromGraphqlException } from '../lib/errors';
 import withViewport from '../lib/withViewport';
 
 import { collectivePageQuery } from '../components/collective-page/graphql/queries';
@@ -155,7 +156,7 @@ function EditPublicMessagePopup({ width, fromCollectiveId, collectiveId, cardRef
               </Flex>
               <Flex flexDirection="column" p={2}>
                 <Span fontSize="14px" color="black.600" mb={2}>
-                  <FormattedMessage id="contribute.publicMessage" defaultMessage="Leave a public message (Optional)" />
+                  <FormattedMessage id="contribute.publicMessage" defaultMessage="Leave a public message (optional)" />
                 </Span>
 
                 <StyledInput
@@ -175,7 +176,7 @@ function EditPublicMessagePopup({ width, fromCollectiveId, collectiveId, cardRef
                 />
                 {error && (
                   <Span color="red.500" fontSize="12px" mt={2}>
-                    {error}
+                    {formatErrorMessage(intl, getErrorFromGraphqlException(error))}
                   </Span>
                 )}
                 <Box m="0 auto">

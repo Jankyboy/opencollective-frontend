@@ -47,8 +47,8 @@ const MobileCollectiveInfoStickyBar = ({ isLoading, collective, host }) => {
           ) : (
             <Span color="black.500" fontSize="16px">
               <FormattedMoneyAmount
-                currency={collective.currency}
-                amount={collective.balance}
+                currency={collective.stats.balanceWithBlockedFunds.currency}
+                amount={collective.stats.balanceWithBlockedFunds.valueInCents}
                 precision={CurrencyPrecision.DEFAULT}
               />
             </Span>
@@ -66,7 +66,17 @@ const MobileCollectiveInfoStickyBar = ({ isLoading, collective, host }) => {
             </P>
             <LinkCollective collective={host}>
               <P color="black.600" fontSize="11px" fontWeight="bold" truncateOverflow maxWidth={135}>
-                {host.name}
+                {collective && collective.isApproved ? (
+                  host.name
+                ) : (
+                  <FormattedMessage
+                    id="Fiscalhost.pending"
+                    defaultMessage="{host} (pending)"
+                    values={{
+                      host: host.name,
+                    }}
+                  />
+                )}
               </P>
             </LinkCollective>
           </Box>
@@ -83,6 +93,13 @@ MobileCollectiveInfoStickyBar.propTypes = {
     currency: PropTypes.string.isRequired,
     balance: PropTypes.number.isRequired,
     type: PropTypes.string,
+    isApproved: PropTypes.bool,
+    stats: PropTypes.shape({
+      balanceWithBlockedFunds: PropTypes.shape({
+        valueInCents: PropTypes.number.isRequired,
+        currency: PropTypes.string.isRequired,
+      }),
+    }),
   }),
   host: PropTypes.shape({
     slug: PropTypes.string.isRequired,

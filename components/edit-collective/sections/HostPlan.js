@@ -1,16 +1,19 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import { gql, useQuery } from '@apollo/client';
+import { useMutation } from '@apollo/client';
 import { InfoCircle } from '@styled-icons/boxicons-regular/InfoCircle';
 import themeGet from '@styled-system/theme-get';
-import { get } from 'lodash';
 import { FormattedMessage } from 'react-intl';
 import styled from 'styled-components';
 
-import Button from '../../Button';
-import Loading from '../../Loading';
+import { API_V2_CONTEXT, gqlV2 } from '../../../lib/graphql/helpers';
+import { editCollectivePageQuery } from '../../../lib/graphql/queries';
+
+import StyledButton from '../../StyledButton';
 import StyledTooltip from '../../StyledTooltip';
-import { H3 } from '../../Text';
+import SettingsTitle from '../SettingsTitle';
+
+import SettingsSectionTitle from './SettingsSectionTitle';
 
 const LimitsInfoCircle = styled(InfoCircle)`
   vertical-align: baseline;
@@ -48,12 +51,6 @@ const PlanName = styled.h4`
   font-weight: bold;
 `;
 
-const PlanPrice = styled.p`
-  font-size: 1.4rem;
-  text-align: center;
-  font-weight: bold;
-`;
-
 const DisabledMessage = styled.p`
   font-size: 1.1rem;
   font-style: italic;
@@ -71,13 +68,13 @@ const GenericPlanFeatures = ({ plan }) => {
     <ul>
       <li>
         {collectiveLimits[plan] === 1 && (
-          <FormattedMessage id="Host.Plan.Collectives.single" defaultMessage="1 hosted collective" />
+          <FormattedMessage id="Host.Plan.Collectives.single" defaultMessage="1 hosted Collective" />
         )}
         {collectiveLimits[plan] > 1 && (
           <FormattedMessage
             id="Host.Plan.Collectives.limited"
             values={{ n: collectiveLimits[plan] }}
-            defaultMessage="Up to {n} hosted collectives"
+            defaultMessage="Up to {n} hosted Collectives"
           />
         )}
       </li>
@@ -88,10 +85,7 @@ const GenericPlanFeatures = ({ plan }) => {
         <FormattedMessage id="Host.Plan.BankTransfers.unlimited" defaultMessage="Unlimited bank transfers" />
       </li>
       <li>
-        <FormattedMessage
-          id="Host.Plan.TransferwisePayouts.unlimited"
-          defaultMessage="Unlimited payouts with TranferWise"
-        />
+        <FormattedMessage id="Host.Plan.TransferwisePayouts.unlimited" defaultMessage="Unlimited payouts" />
       </li>
     </ul>
   );
@@ -101,28 +95,87 @@ GenericPlanFeatures.propTypes = {
   plan: PropTypes.string.isRequired,
 };
 
-const editCollectiveHostPlansQuery = gql`
-  query EditCollectiveHostPlans($slug: String) {
-    Collective(slug: $slug) {
+const NewPlanFeatures = ({ collective, plan, label, loading, editHostPlan, hostFees }) => {
+  return (
+    <Plan active={collective.plan.name === plan}>
+      <PlanName>{label}</PlanName>
+      <PlanFeatures>
+        <ul>
+          <li>
+            <FormattedMessage id="Host.Plan.PlatformTips.yes" defaultMessage="Voluntary Platform Tips" />
+          </li>
+          {hostFees && (
+            <li>
+              <FormattedMessage id="Host.Plan.HostFees.yes" defaultMessage="Configurable Host Fee" />
+              .&nbsp;
+              <FormattedMessage
+                id="Host.Plan.RevenueCharge.yes"
+                defaultMessage="Platform fees will be 15% of Host fees"
+              />{' '}
+              <StyledTooltip
+                content={() => (
+                  <FormattedMessage
+                    id="newPricing.tab.hostFeeChargeExample"
+                    defaultMessage="If your Host fee is 10% and your Collectives bring in $1,000, your Platform fee will be $15. If you host fee is 0%, your Platform fee will be 0."
+                  />
+                )}
+              >
+                <LimitsInfoCircle size={12} />
+              </StyledTooltip>
+            </li>
+          )}
+          {!hostFees && (
+            <li>
+              <FormattedMessage id="Host.Plan.HostFees.no" defaultMessage="0% Host Fee (not configurable)" />
+            </li>
+          )}
+          <li>
+            <FormattedMessage id="Host.Plan.AddedFunds.unlimited" defaultMessage="Unlimited added funds" />
+          </li>
+          <li>
+            <FormattedMessage id="Host.Plan.BankTransfers.unlimited" defaultMessage="Unlimited bank transfers" />
+          </li>
+          <li>
+            <FormattedMessage id="Host.Plan.TransferwisePayouts.unlimited" defaultMessage="Unlimited payouts" />
+          </li>
+          <li>
+            <FormattedMessage id="Host.Plan.MinimalRevenue.no" defaultMessage="No minimum revenue." />
+          </li>
+        </ul>
+      </PlanFeatures>
+      <StyledButton
+        disabled={loading || collective.plan.name === plan}
+        onClick={() => editHostPlan({ variables: { account: { slug: collective.slug }, plan: plan } })}
+      >
+        {loading ? '...' : collective.plan.name === plan ? 'Activated' : 'Activate'}
+      </StyledButton>
+      {collective.plan.name === plan && <DisabledMessage>Current plan.</DisabledMessage>}
+    </Plan>
+  );
+};
+
+NewPlanFeatures.propTypes = {
+  collective: PropTypes.object.isRequired,
+  label: PropTypes.string.isRequired,
+  plan: PropTypes.string.isRequired,
+  editHostPlan: PropTypes.func.isRequired,
+  loading: PropTypes.bool.isRequired,
+  hostFees: PropTypes.bool.isRequired,
+};
+
+const editHostPlanMutation = gqlV2/* GraphQL */ `
+  mutation EditHostPlan($account: AccountReferenceInput!, $plan: String!) {
+    editHostPlan(account: $account, plan: $plan) {
       id
       slug
-      tiers {
+      hostFeePercent
+      platformFeePercent
+      plan {
         id
-        slug
-        type
         name
-        data
-        description
-        longDescription
-        hasLongDescription
-        button
-        amount
-        amountType
-        minimumAmount
-        presets
-        interval
-        currency
-        maxQuantity
+      }
+      hostMetrics {
+        hostFeeSharePercent
       }
     }
   }
@@ -130,102 +183,97 @@ const editCollectiveHostPlansQuery = gql`
 
 const HostPlan = props => {
   const { collective } = props;
-  const { data: opencollective, loading } = useQuery(editCollectiveHostPlansQuery, {
-    variables: { slug: 'opencollective' },
-  });
 
-  if (loading) {
-    return (
-      <div>
-        <Loading />
-      </div>
-    );
-  }
+  const editHostPlanMutationOptions = {
+    context: API_V2_CONTEXT,
+    refetchQueries: [{ query: editCollectivePageQuery, variables: { slug: collective.slug } }],
+    awaitRefetchQueries: true,
+  };
 
-  const tiers = get(opencollective, 'Collective.tiers') || [];
-  const subscribedTier = tiers.find(tier => tier.slug === collective.plan.name);
-  const redirectUrl = `${process.env.WEBSITE_URL}/${collective.slug}/edit/host-plan`;
+  const [editHostPlan, { loading: editHostPlanLoading }] = useMutation(
+    editHostPlanMutation,
+    editHostPlanMutationOptions,
+  );
 
   return (
     <div>
-      <H3>
+      <SettingsTitle>
         <FormattedMessage id="Host.Plan" defaultMessage="Host Plan" />
-      </H3>
+      </SettingsTitle>
 
       <PlanGrid>
         <Plan active={collective.plan.name === 'default'}>
-          <PlanName>Free Plan</PlanName>
+          <PlanName>Default Plan (old)</PlanName>
           <PlanFeatures>
             <ul>
               <li>
-                <FormattedMessage id="Host.Plan.Collectives.unlimited" defaultMessage="Unlimited hosted collectives" />
+                <FormattedMessage
+                  id="Host.Plan.PlatformTips.sometimes"
+                  defaultMessage="5% Platform Fees or Platform Tips"
+                />
+              </li>
+              <li>
+                <FormattedMessage id="Host.Plan.HostFees.yes" defaultMessage="Configurable Host Fee" />
+                .&nbsp;
+                <FormattedMessage
+                  id="Host.Plan.RevenueCharge.no"
+                  defaultMessage="No Platform fee charges on Host fee."
+                />
               </li>
               <li>
                 <FormattedMessage id="Host.Plan.AddedFunds.limited" defaultMessage="Up to $1000 added funds" />
-                <br />
-                (<FormattedMessage id="Host.Plan.acrossCollectives" defaultMessage="across all collectives" />)
               </li>
               <li>
                 <FormattedMessage id="Host.Plan.BankTransfers.limited" defaultMessage="Up to $1000 bank transfers" />
-                <br />
-                (<FormattedMessage id="Host.Plan.acrossCollectives" defaultMessage="across all collectives" />)
               </li>
               <li>
                 <FormattedMessage
                   id="Host.Plan.TransferwisePayouts.limited"
-                  defaultMessage="Up to $1000 in payouts with TransferWise"
+                  defaultMessage="Up to $1000 payouts with Wise"
                 />
-                <br />
-                (<FormattedMessage id="Host.Plan.acrossCollectives" defaultMessage="across all collectives" />)
+              </li>
+              <li>
+                <FormattedMessage id="Host.Plan.MinimalRevenue.no" defaultMessage="No minimum revenue." />
               </li>
             </ul>
           </PlanFeatures>
-          <PlanPrice>Free</PlanPrice>
+          <StyledButton disabled={true}>Deprecated</StyledButton>
+          {collective.plan.name === 'default' && <DisabledMessage>Current plan.</DisabledMessage>}
         </Plan>
-        {tiers.map(tier => {
-          const isCurrentPlan = collective.plan.name === tier.slug;
-          const hostedCollectivesLimit = get(tier, 'data.hostedCollectivesLimit');
-          const isWithinLimits = hostedCollectivesLimit
-            ? collective.plan.hostedCollectives <= hostedCollectivesLimit
-            : true;
 
-          let verb = isCurrentPlan ? 'Subscribed' : 'Subscribe';
-          // Rename verb to Upgrade/Downgrade if subscribed to active Tier
-          if (subscribedTier && subscribedTier.amount > tier.amount) {
-            verb = 'Downgrade';
-          } else if (subscribedTier && subscribedTier.amount < tier.amount) {
-            verb = 'Upgrade';
-          }
+        <NewPlanFeatures
+          collective={collective}
+          plan="start-plan-2021"
+          label="Start Plan"
+          hostFees={false}
+          editHostPlan={editHostPlan}
+          loading={editHostPlanLoading}
+        />
 
-          return (
-            <Plan key={tier.id} disabled={!isWithinLimits && !isCurrentPlan} active={isCurrentPlan}>
-              <PlanName>{tier.name}</PlanName>
-              <PlanFeatures>
-                <GenericPlanFeatures plan={tier.slug} />
-              </PlanFeatures>
-              <PlanPrice>
-                ${tier.amount / 100} / {tier.interval}
-              </PlanPrice>
-              <Button
-                href={`/opencollective/contribute/${tier.slug}-${tier.id}/checkout?contributeAs=${collective.slug}&redirect=${redirectUrl}`}
-                disabled={!isWithinLimits || isCurrentPlan}
-              >
-                {verb}
-              </Button>
-              {isCurrentPlan && <DisabledMessage>Current plan.</DisabledMessage>}
-              {!isWithinLimits && !isCurrentPlan && <DisabledMessage>Current usage is above limits.</DisabledMessage>}
-            </Plan>
-          );
-        })}
-        <Plan active={collective.plan.name === 'network-host-plan'}>
-          <PlanName>Network Host Plan</PlanName>
+        {collective.type === 'ORGANIZATION' && (
+          <NewPlanFeatures
+            collective={collective}
+            plan="grow-plan-2021"
+            label="Grow Plan"
+            hostFees={true}
+            editHostPlan={editHostPlan}
+            loading={editHostPlanLoading}
+          />
+        )}
+
+        <Plan active={collective.plan.name === 'custom'}>
+          <PlanName>Custom Host Plan</PlanName>
           <PlanFeatures>
             <ul>
               <li>
+                <FormattedMessage id="Host.Plan.PlatformTips.yes" defaultMessage="Voluntary Platform Tips" />
+              </li>
+              <li>
+                <FormattedMessage id="Host.Plan.HostFees.yes" defaultMessage="Configurable Host Fee" />
+                .&nbsp;
                 <FormattedMessage
-                  id="Host.Plan.Collectives.more"
-                  values={{ n: 25 }}
-                  defaultMessage="More than {n} collectives"
+                  id="Host.Plan.RevenueCharge.negotiable"
+                  defaultMessage="Negotiable revenue sharing model."
                 />
               </li>
               <li>
@@ -235,21 +283,24 @@ const HostPlan = props => {
                 <FormattedMessage id="Host.Plan.BankTransfers.unlimited" defaultMessage="Unlimited bank transfers" />
               </li>
               <li>
+                <FormattedMessage id="Host.Plan.TransferwisePayouts.unlimited" defaultMessage="Unlimited payouts" />
+              </li>
+              <li>
                 <FormattedMessage
-                  id="Host.Plan.TransferwisePayouts.unlimited"
-                  defaultMessage="Unlimited payouts with TranferWise"
+                  id="newPricingTable.row.minimumRaised"
+                  defaultMessage="> {minimumRaised} total processed"
+                  values={{ minimumRaised: '$150,000' }}
                 />
               </li>
             </ul>
           </PlanFeatures>
-          <PlanPrice>Talk to Us</PlanPrice>
-          <Button href="mailto:support@opencollective.com">Contact</Button>
+          <StyledButton href="/support">Contact Us</StyledButton>
         </Plan>
       </PlanGrid>
 
-      <h3>
+      <SettingsSectionTitle mt={3}>
         <FormattedMessage id="collective.hostSettings.currentPlan.title" defaultMessage="Limits and Usage" />
-      </h3>
+      </SettingsSectionTitle>
 
       <ul>
         <li>
@@ -272,7 +323,7 @@ const HostPlan = props => {
             content={() => (
               <FormattedMessage
                 id="collective.hostSettings.help.fundsLimit"
-                defaultMessage="The maximum amount of fund added, during any timeframe, across all collectives."
+                defaultMessage="Max funds added, all time, all Collectives."
               />
             )}
           >
@@ -294,7 +345,7 @@ const HostPlan = props => {
             content={() => (
               <FormattedMessage
                 id="collective.hostSettings.help.manualPayments"
-                defaultMessage="Your contributors create a pending donation and receive email instructions with your bank details. You can reconcile the donation when you receive it."
+                defaultMessage="Financial contributors can select 'bank transfer' at checkout and will receive email instructions with your bank details. You confirm once funds are received."
               />
             )}
           >
@@ -311,12 +362,12 @@ const HostPlan = props => {
           )}
         </li>
         <li>
-          <strong>Payouts with TransferWise Limit</strong>{' '}
+          <strong>Payouts with Wise Limit</strong>{' '}
           <StyledTooltip
             content={() => (
               <FormattedMessage
                 id="collective.hostSettings.help."
-                defaultMessage="You can pay expenses with one-click using TransferWise."
+                defaultMessage="You can pay expenses with one-click using Wise."
               />
             )}
           >
@@ -331,6 +382,19 @@ const HostPlan = props => {
           {!collective.plan.transferwisePayoutsLimit && (
             <FormattedMessage id="collective.hostSettings.unlimited" defaultMessage="Unlimited" />
           )}
+        </li>
+        <li>
+          <strong>
+            {' '}
+            <FormattedMessage id="newPricingTable.row.hostFee" defaultMessage="Ability to configure Host Fee" />
+          </strong>{' '}
+          : {collective.plan.hostFees && <FormattedMessage id="yes" defaultMessage="Yes" />}
+          {!collective.plan.hostFees && <FormattedMessage id="no" defaultMessage="No" />}
+        </li>
+        <li>
+          <strong>Charge on Host Fees</strong> :{' '}
+          {collective.plan.hostFeeSharePercent !== 0 && <span>{collective.plan.hostFeeSharePercent}%</span>}
+          {collective.plan.hostFeeSharePercent === 0 && <FormattedMessage id="no" defaultMessage="No" />}
         </li>
       </ul>
     </div>

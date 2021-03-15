@@ -1,25 +1,24 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import { graphql } from '@apollo/client/react/hoc';
-import { get, mapValues } from 'lodash';
+import { get, omitBy } from 'lodash';
+import { withRouter } from 'next/router';
 import { FormattedMessage } from 'react-intl';
 import styled from 'styled-components';
 
+import { isSectionForAdminsOnly, NAVBAR_CATEGORIES } from '../lib/collective-sections';
 import { CollectiveType } from '../lib/constants/collectives';
 import roles from '../lib/constants/roles';
 import { getErrorFromGraphqlException } from '../lib/errors';
-import { GraphQLContext } from '../lib/graphql/context';
 import { API_V2_CONTEXT, gqlV2 } from '../lib/graphql/helpers';
 import { addCollectiveCoverData } from '../lib/graphql/queries';
-import { Router } from '../server/pages';
 
 import Body from '../components/Body';
+import { parseAmountRange } from '../components/budget/filters/AmountFilter';
+import { getDateRangeFromPeriod } from '../components/budget/filters/PeriodFilter';
+import CollectiveNavbar from '../components/collective-navbar';
 import { Sections } from '../components/collective-page/_constants';
-import CollectiveNavbar from '../components/CollectiveNavbar';
-import Container from '../components/Container';
 import ErrorPage from '../components/ErrorPage';
-import { parseAmountRange } from '../components/expenses/filters/ExpensesAmountFilter';
-import { getDateRangeFromPeriod } from '../components/expenses/filters/ExpensesDateFilter';
 import Footer from '../components/Footer';
 import { Box, Flex } from '../components/Grid';
 import Header from '../components/Header';
@@ -27,6 +26,7 @@ import Link from '../components/Link';
 import Loading from '../components/Loading';
 import MessageBox from '../components/MessageBox';
 import Page from '../components/Page';
+import PageFeatureNotSupported from '../components/PageFeatureNotSupported';
 import Pagination from '../components/Pagination';
 import SearchBar from '../components/SearchBar';
 import StyledHr from '../components/StyledHr';
@@ -105,6 +105,7 @@ class TransactionsPage extends React.Component {
     transactionsData: PropTypes.object,
     LoggedInUser: PropTypes.object,
     query: PropTypes.object,
+    router: PropTypes.object,
   };
 
   constructor(props) {
@@ -151,10 +152,17 @@ class TransactionsPage extends React.Component {
     }
   }
 
+  updateFilters(queryParams) {
+    return this.props.router.push({
+      pathname: `/${this.props.slug}/transactions`,
+      query: omitBy({ ...this.props.query, ...queryParams }, value => !value),
+    });
+  }
+
   render() {
     const { LoggedInUser, query, transactionsData, data, slug } = this.props;
     const collective = get(this.props, 'data.Collective') || this.state.Collective;
-    const { transactions, error, loading, variables } = transactionsData;
+    const { transactions, error, loading, variables, refetch } = transactionsData;
     const hasFilters = Object.entries(query).some(([key, value]) => {
       return !['view', 'offset', 'limit', 'slug'].includes(key) && value;
     });
@@ -168,124 +176,107 @@ class TransactionsPage extends React.Component {
       );
     } else if (!collective) {
       return <ErrorPage data={data} />;
+    } else if (
+      isSectionForAdminsOnly(collective, Sections.BUDGET) &&
+      !LoggedInUser?.canEditCollective(collective) &&
+      !LoggedInUser?.isHostAdmin(collective)
+    ) {
+      // Hack for funds that want to keep their budget "private"
+      return <PageFeatureNotSupported showContactSupportLink={false} />;
     }
 
     return (
       <TransactionPageWrapper>
         <Header collective={collective} LoggedInUser={LoggedInUser} />
-        <GraphQLContext.Provider value={transactionsData}>
-          <Body>
-            <Container mb={4}>
-              <CollectiveNavbar
-                collective={collective}
-                isAdmin={LoggedInUser && LoggedInUser.canEditCollective(collective)}
-                showEdit
-                selectedSection={
-                  collective.type === CollectiveType.COLLECTIVE ? Sections.BUDGET : Sections.TRANSACTIONS
-                }
-                callsToAction={{
-                  hasSubmitExpense: [CollectiveType.COLLECTIVE, CollectiveType.EVENT].includes(collective.type),
-                }}
-              />
-            </Container>
-            <Box maxWidth={1260} m="0 auto" px={[2, 3, 4]} py={[0, 5]}>
-              <Flex justifyContent="space-between">
-                <H1 fontSize="32px" lineHeight="40px" py={2} fontWeight="normal" display={['none', 'block']}>
-                  <FormattedMessage id="section.transactions.title" defaultMessage="Transactions" />
-                </H1>
-                <Box p={2} flexGrow={[1, 0]}>
-                  <SearchBar
-                    defaultValue={query.searchTerm}
-                    onSubmit={searchTerm =>
-                      Router.pushRoute('transactions', { ...query, searchTerm, offset: null, collectiveSlug: slug })
-                    }
-                  />
-                </Box>
-              </Flex>
-              <StyledHr my="24px" mx="8px" borderWidth="0.5px" />
-              <Flex
-                mb={['8px', '46px']}
-                mx="8px"
-                justifyContent="space-between"
-                flexDirection={['column', 'row']}
-                alignItems={['stretch', 'flex-end']}
-              >
-                <TransactionsFilters
-                  filters={query}
-                  collective={collective}
-                  onChange={queryParams =>
-                    Router.pushRoute('transactions', {
-                      ...query,
-                      ...queryParams,
-                      collectiveSlug: slug,
-                      offset: null,
-                    })
-                  }
+        <Body>
+          <CollectiveNavbar
+            collective={collective}
+            isAdmin={LoggedInUser && LoggedInUser.canEditCollective(collective)}
+            selectedCategory={NAVBAR_CATEGORIES.BUDGET}
+            selectedSection={collective.type === CollectiveType.COLLECTIVE ? Sections.BUDGET : Sections.TRANSACTIONS}
+          />
+          <Box maxWidth={1260} m="0 auto" px={[2, 3, 4]} py={[0, 5]} mt={3}>
+            <Flex justifyContent="space-between">
+              <H1 fontSize="32px" lineHeight="40px" py={2} fontWeight="normal" display={['none', 'block']}>
+                <FormattedMessage id="SectionTransactions.Title" defaultMessage="Transactions" />
+              </H1>
+              <Box p={2} flexGrow={[1, 0]}>
+                <SearchBar
+                  defaultValue={query.searchTerm}
+                  onSubmit={searchTerm => this.updateFilters({ searchTerm, offset: null })}
                 />
-                <Flex>
-                  {canDownloadInvoices && (
-                    <Box mr="8px">
-                      <TransactionsDownloadInvoices collective={collective} />
-                    </Box>
-                  )}
-                  <TransactionsDownloadCSV collective={collective} />
-                </Flex>
+              </Box>
+            </Flex>
+            <StyledHr my="24px" mx="8px" borderWidth="0.5px" />
+            <Flex
+              mb={['8px', '46px']}
+              mx="8px"
+              justifyContent="space-between"
+              flexDirection={['column', 'row']}
+              alignItems={['stretch', 'flex-end']}
+            >
+              <TransactionsFilters
+                filters={query}
+                collective={collective}
+                onChange={queryParams => this.updateFilters({ ...queryParams, offset: null })}
+              />
+              <Flex>
+                {canDownloadInvoices && (
+                  <Box mr="8px">
+                    <TransactionsDownloadInvoices collective={collective} />
+                  </Box>
+                )}
+                <TransactionsDownloadCSV collective={collective} />
               </Flex>
-              {error ? (
-                <MessageBox type="error" withIcon>
-                  {getErrorFromGraphqlException(error).message}
-                </MessageBox>
-              ) : !loading && !transactions?.nodes?.length ? (
-                <MessageBox type="info" withIcon data-cy="zero-transactions-message">
-                  {hasFilters ? (
-                    <FormattedMessage
-                      id="TransactionsList.Empty"
-                      defaultMessage="No transaction matches the given filters, <ResetLink>reset them</ResetLink> to see all transactions."
-                      values={{
-                        ResetLink(text) {
-                          return (
-                            <Link
-                              data-cy="reset-transactions-filters"
-                              route="transactions"
-                              params={{
-                                ...mapValues(query, () => null),
-                                collectiveSlug: collective.slug,
-                                view: 'transactions',
-                              }}
-                            >
-                              {text}
-                            </Link>
-                          );
-                        },
-                      }}
-                    />
-                  ) : (
-                    <FormattedMessage id="transactions.empty" defaultMessage="No transactions" />
-                  )}
-                </MessageBox>
-              ) : (
-                <React.Fragment>
-                  <TransactionsList
-                    isLoading={loading}
-                    collective={collective}
-                    nbPlaceholders={variables.limit}
-                    transactions={transactions?.nodes}
-                    displayActions
+            </Flex>
+            {error ? (
+              <MessageBox type="error" withIcon>
+                {getErrorFromGraphqlException(error).message}
+              </MessageBox>
+            ) : !loading && !transactions?.nodes?.length ? (
+              <MessageBox type="info" withIcon data-cy="zero-transactions-message">
+                {hasFilters ? (
+                  <FormattedMessage
+                    id="TransactionsList.Empty"
+                    defaultMessage="No transactions found. <ResetLink>Reset filters</ResetLink> to see all transactions."
+                    values={{
+                      ResetLink(text) {
+                        return (
+                          <Link data-cy="reset-transactions-filters" href={`/${collective.slug}/transactions`}>
+                            <span>{text}</span>
+                          </Link>
+                        );
+                      },
+                    }}
                   />
-                  <Flex mt={5} justifyContent="center">
-                    <Pagination
-                      route="transactions"
-                      total={transactions?.totalCount}
-                      limit={variables.limit}
-                      offset={variables.offset}
-                      scrollToTopOnChange
-                    />
-                  </Flex>
-                </React.Fragment>
-              )}
-            </Box>
-          </Body>
-        </GraphQLContext.Provider>
+                ) : (
+                  <FormattedMessage id="transactions.empty" defaultMessage="No transactions" />
+                )}
+              </MessageBox>
+            ) : (
+              <React.Fragment>
+                <TransactionsList
+                  isLoading={loading}
+                  collective={collective}
+                  nbPlaceholders={variables.limit}
+                  transactions={transactions?.nodes}
+                  displayActions
+                  onMutationSuccess={() => refetch()}
+                />
+                <Flex mt={5} justifyContent="center">
+                  <Pagination
+                    route={`/${slug}/transactions`}
+                    total={transactions?.totalCount}
+                    limit={variables.limit}
+                    offset={variables.offset}
+                    ignoredQueryParams={['collectiveSlug']}
+                    scrollToTopOnChange
+                  />
+                </Flex>
+              </React.Fragment>
+            )}
+          </Box>
+        </Body>
         <Footer />
       </TransactionPageWrapper>
     );
@@ -302,4 +293,4 @@ const addTransactionsData = graphql(transactionsPageQuery, {
   },
 });
 
-export default withUser(addTransactionsData(addCollectiveCoverData(TransactionsPage)));
+export default withUser(addTransactionsData(addCollectiveCoverData(withRouter(TransactionsPage))));

@@ -1,29 +1,31 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import { graphql } from '@apollo/client/react/hoc';
-import { has, mapValues, omit, pick } from 'lodash';
+import { has, mapValues, omit, omitBy } from 'lodash';
 import memoizeOne from 'memoize-one';
+import { withRouter } from 'next/router';
 import { defineMessages, FormattedMessage, injectIntl } from 'react-intl';
 import styled from 'styled-components';
 
 import hasFeature, { FEATURES } from '../lib/allowed-features';
+import { isSectionForAdminsOnly, NAVBAR_CATEGORIES } from '../lib/collective-sections';
 import expenseStatus from '../lib/constants/expense-status';
 import expenseTypes from '../lib/constants/expenseTypes';
 import { PayoutMethodType } from '../lib/constants/payout-method';
 import { generateNotFoundError } from '../lib/errors';
 import { API_V2_CONTEXT, gqlV2 } from '../lib/graphql/helpers';
-import { Router } from '../server/pages';
 
+import { parseAmountRange } from '../components/budget/filters/AmountFilter';
+import { getDateRangeFromPeriod } from '../components/budget/filters/PeriodFilter';
+import CollectiveNavbar from '../components/collective-navbar';
 import { Sections } from '../components/collective-page/_constants';
-import CollectiveNavbar from '../components/CollectiveNavbar';
+import { collectiveNavbarFieldsFragment } from '../components/collective-page/graphql/fragments';
 import Container from '../components/Container';
 import ErrorPage from '../components/ErrorPage';
 import ExpenseInfoSidebar from '../components/expenses/ExpenseInfoSidebar';
 import ExpensesFilters from '../components/expenses/ExpensesFilters';
 import ExpensesList from '../components/expenses/ExpensesList';
 import ExpenseTags from '../components/expenses/ExpenseTags';
-import { parseAmountRange } from '../components/expenses/filters/ExpensesAmountFilter';
-import { getDateRangeFromPeriod } from '../components/expenses/filters/ExpensesDateFilter';
 import { expensesListFieldsFragment } from '../components/expenses/graphql/fragments';
 import { Box, Flex } from '../components/Grid';
 import Link from '../components/Link';
@@ -106,6 +108,10 @@ class ExpensePage extends React.Component {
       account: PropTypes.shape({
         id: PropTypes.string.isRequired,
         currency: PropTypes.string.isRequired,
+        isArchived: PropTypes.bool,
+        isHost: PropTypes.bool,
+        host: PropTypes.object,
+        expensesTags: PropTypes.array,
       }),
       expenses: PropTypes.shape({
         nodes: PropTypes.array,
@@ -114,6 +120,7 @@ class ExpensePage extends React.Component {
         limit: PropTypes.number,
       }),
     }),
+    router: PropTypes.object,
   };
 
   componentDidUpdate(oldProps) {
@@ -138,20 +145,24 @@ class ExpensePage extends React.Component {
   });
 
   buildFilterLinkParams(params) {
-    return {
-      ...pick(this.props, ['collectiveSlug', 'parentCollectiveSlug']),
-      ...omit(this.props.query, ['offset']),
+    const queryParameters = {
+      ...omit(this.props.query, ['offset', 'collectiveSlug', 'parentCollectiveSlug']),
       ...params,
     };
+
+    return omitBy(queryParameters, value => !value);
   }
 
   updateFilters = queryParams => {
-    return Router.pushRoute('expenses', this.buildFilterLinkParams({ ...queryParams, offset: null }));
+    return this.props.router.push({
+      pathname: `/${this.props.collectiveSlug}/expenses`,
+      query: this.buildFilterLinkParams({ ...queryParams, offset: null }),
+    });
   };
 
   handleSearch = searchTerm => {
     const params = this.buildFilterLinkParams({ searchTerm, offset: null });
-    Router.pushRoute('expenses', params);
+    this.props.router.push({ pathname: `/${this.props.collectiveSlug}/expenses`, query: params });
   };
 
   getTagProps = tag => {
@@ -161,7 +172,7 @@ class ExpensePage extends React.Component {
   };
 
   render() {
-    const { collectiveSlug, data, query } = this.props;
+    const { collectiveSlug, data, query, LoggedInUser } = this.props;
     const hasFilters = this.hasFilter(query);
 
     if (!data.loading) {
@@ -171,16 +182,23 @@ class ExpensePage extends React.Component {
         return <ErrorPage error={generateNotFoundError(collectiveSlug)} log={false} />;
       } else if (!hasFeature(data.account, FEATURES.RECEIVE_EXPENSES)) {
         return <PageFeatureNotSupported />;
+      } else if (
+        isSectionForAdminsOnly(data.account, Sections.BUDGET) &&
+        !LoggedInUser?.canEditCollective(data.account) &&
+        !LoggedInUser?.isHostAdmin(data.account)
+      ) {
+        // Hack for funds that want to keep their budget "private"
+        return <PageFeatureNotSupported showContactSupportLink={false} />;
       }
     }
 
     return (
-      <Page collective={data.account} {...this.getPageMetaData(data.account)} withoutGlobalStyles>
+      <Page collective={data.account} {...this.getPageMetaData(data.account)}>
         <CollectiveNavbar
           collective={data.account}
           isLoading={!data.account}
           selected={Sections.BUDGET}
-          callsToAction={{ hasSubmitExpense: true }}
+          selectedCategory={NAVBAR_CATEGORIES.BUDGET}
         />
         <Container position="relative" minHeight={[null, 800]}>
           <Box maxWidth={1242} m="0 auto" px={[2, 3, 4]} py={[4, 5]}>
@@ -217,10 +235,12 @@ class ExpensePage extends React.Component {
                           ResetLink: text => (
                             <Link
                               data-cy="reset-expenses-filters"
-                              route="expenses"
-                              params={this.buildFilterLinkParams(mapValues(this.props.query, () => null))}
+                              href={{
+                                pathname: '/expenses',
+                                query: this.buildFilterLinkParams(mapValues(this.props.query, () => null)),
+                              }}
                             >
-                              {text}
+                              <span>{text}</span>
                             </Link>
                           ),
                         }}
@@ -240,10 +260,11 @@ class ExpensePage extends React.Component {
                     />
                     <Flex mt={5} justifyContent="center">
                       <Pagination
-                        route="expenses"
+                        route={`/${collectiveSlug}/expenses`}
                         total={data.expenses?.totalCount}
                         limit={data.variables.limit}
                         offset={data.variables.offset}
+                        ignoredQueryParams={['collectiveSlug', 'parentCollectiveSlug']}
                         scrollToTopOnChange
                       />
                     </Flex>
@@ -271,8 +292,10 @@ class ExpensePage extends React.Component {
                     {({ key, tag, renderedTag, props }) => (
                       <Link
                         key={key}
-                        route="expenses"
-                        params={this.buildFilterLinkParams({ tag: props.closeButtonProps ? null : tag })}
+                        href={{
+                          pathname: `/${this.props.collectiveSlug}/expenses`,
+                          query: this.buildFilterLinkParams({ tag: props.closeButtonProps ? null : tag }),
+                        }}
                         data-cy="expense-tags-link"
                       >
                         {renderedTag}
@@ -310,16 +333,25 @@ const expensesPageQuery = gqlV2/* GraphQL */ `
       imageUrl
       name
       currency
+      isArchived
+      settings
       expensesTags {
         id
         tag
       }
+      features {
+        ...NavbarFields
+      }
 
-      ... on AccountWithContributions {
-        balance
+      stats {
+        balanceWithBlockedFunds {
+          valueInCents
+          currency
+        }
       }
 
       ... on AccountWithHost {
+        isApproved
         host {
           id
           name
@@ -328,6 +360,7 @@ const expensesPageQuery = gqlV2/* GraphQL */ `
           supportedPayoutMethods
           settings
           plan {
+            id
             transferwisePayouts
             transferwisePayoutsLimit
           }
@@ -335,7 +368,6 @@ const expensesPageQuery = gqlV2/* GraphQL */ `
       }
 
       ... on Organization {
-        balance
         # We add that for hasFeature
         isHost
         isActive
@@ -382,6 +414,7 @@ const expensesPageQuery = gqlV2/* GraphQL */ `
   }
 
   ${expensesListFieldsFragment}
+  ${collectiveNavbarFieldsFragment}
 `;
 
 const addExpensesPageData = graphql(expensesPageQuery, {
@@ -408,4 +441,4 @@ const addExpensesPageData = graphql(expensesPageQuery, {
   },
 });
 
-export default injectIntl(addExpensesPageData(withUser(ExpensePage)));
+export default injectIntl(addExpensesPageData(withUser(withRouter(ExpensePage))));

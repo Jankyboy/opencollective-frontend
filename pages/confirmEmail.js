@@ -12,10 +12,6 @@ import MessageBox from '../components/MessageBox';
 import Page from '../components/Page';
 import { withUser } from '../components/UserProvider';
 
-/**
- * Main contribution flow entrypoint. Render all the steps from contributeAs
- * to payment.
- */
 class ConfirmEmailPage extends React.Component {
   static getInitialProps({ query }) {
     return { token: query.token };
@@ -90,7 +86,7 @@ class ConfirmEmailPage extends React.Component {
           </Box>
           {status === 'submitting' && (
             <MessageBox type="info" isLoading>
-              <FormattedMessage id="confirmEmail.validating" defaultMessage="Validating your new email" />
+              <FormattedMessage id="confirmEmail.validating" defaultMessage="Validating your email address..." />
             </MessageBox>
           )}
           {status === 'success' && (

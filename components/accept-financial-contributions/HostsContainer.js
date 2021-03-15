@@ -40,7 +40,6 @@ class HostsContainer extends React.Component {
     collective: PropTypes.object,
     onChange: PropTypes.func,
     data: PropTypes.object.isRequired,
-    viewport: PropTypes.string,
     tags: PropTypes.array,
     intl: PropTypes.object.isRequired,
   };
@@ -51,7 +50,7 @@ class HostsContainer extends React.Component {
     this.messages = defineMessages({
       seeMoreHosts: {
         id: 'fiscalHost.seeMoreHosts',
-        defaultMessage: 'See more hosts',
+        defaultMessage: 'See more Hosts',
       },
     });
   }
@@ -60,7 +59,11 @@ class HostsContainer extends React.Component {
     const { onChange, data, intl } = this.props;
 
     if (!data.hosts || !data.hosts.nodes) {
-      return <Loading />;
+      return (
+        <Flex justifyContent="center" width="100%" py={4}>
+          <Loading />
+        </Flex>
+      );
     }
 
     const hosts = [...data.hosts.nodes];
@@ -105,7 +108,7 @@ class HostsContainer extends React.Component {
           </AllCardsContainer>
         </Hide>
         <Flex justifyContent="center" mt={[2, 0]} width={['100%', null, '90%']}>
-          <Link route="hosts">
+          <Link href="/hosts">
             <StyledButton fontSize="13px" buttonStyle="dark" minHeight="36px" mt={[2, 3]} mb={3} px={4}>
               {intl.formatMessage(this.messages.seeMoreHosts)}
             </StyledButton>

@@ -12,8 +12,11 @@ import MessageBox from '../../MessageBox';
 import StyledButton from '../../StyledButton';
 import StyledInput from '../../StyledInput';
 import StyledTextarea from '../../StyledTextarea';
-import { H3, H4, P } from '../../Text';
+import { P } from '../../Text';
 import { editCollectiveSettingsMutation } from '../mutations';
+import SettingsTitle from '../SettingsTitle';
+
+import SettingsSectionTitle from './SettingsSectionTitle';
 
 import imgInvoiceTitlePreview from '../../../public/static/images/invoice-title-preview.jpg';
 
@@ -43,16 +46,16 @@ const InvoicesReceipts = ({ collective }) => {
 
   return (
     <Container>
-      <H3>
-        <FormattedMessage id="editCollective.invoicesAndReceipts" defaultMessage="Invoices & Receipts" />
-      </H3>
-      <H4 mt={2}>
+      <SettingsTitle>
+        <FormattedMessage id="becomeASponsor.invoiceReceipts" defaultMessage="Invoices & Receipts" />
+      </SettingsTitle>
+      <SettingsSectionTitle>
         <FormattedMessage id="EditHostInvoice.receiptsSettings" defaultMessage="Receipt Settings" />
-      </H4>
+      </SettingsSectionTitle>
       <P>
         <FormattedMessage
           id="EditHostInvoice.Receipt.Instructions"
-          defaultMessage="You can define a custom title that will appear on the receipts generated for the contributors of the Collectives you are hosting. Keep this field empty to use the default title:"
+          defaultMessage="You can customize the title (and add custom text) on automatically generated receipts for financial contributions to your Collective(s), e.g. 'donation receipt' or 'tax receipt' or a phrase appropriate for your legal entity type, language, and location. Keep this field empty to use the default title:"
         />
         {/** Un-localized on purpose, because it's not localized in the actual invoice */}
         &nbsp;<i>Payment Receipt</i>.
@@ -109,7 +112,7 @@ const InvoicesReceipts = ({ collective }) => {
           </StyledButton>
         </Flex>
         <Box mt={3} maxWidth={400}>
-          <img src={imgInvoiceTitlePreview} alt="" />
+          <img src={imgInvoiceTitlePreview} alt="" style={{ maxWidth: 400 }} />
         </Box>
       </Flex>
     </Container>

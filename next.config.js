@@ -2,8 +2,10 @@ require('./env');
 
 const withSourceMaps = require('@zeit/next-source-maps')();
 const { getCSPHeaderForNextJS } = require('./server/content-security-policy');
+const { REWRITES } = require('./rewrites');
 
 const nextConfig = {
+  useFileSystemPublicRoutes: false,
   webpack: (config, { webpack, isServer, buildId }) => {
     config.plugins.push(
       // Ignore __tests__
@@ -23,8 +25,8 @@ const nextConfig = {
         ONBOARDING_MODAL: true,
         NEW_HOST_APPLICATION_FLOW: null,
         TW_API_COLLECTIVE_SLUG: null,
-        NEW_CONTRIBUTION_FLOW: false,
-        ENABLE_GUEST_CONTRIBUTIONS: false,
+        REJECT_CONTRIBUTION: false,
+        REJECTED_CATEGORIES: false,
       }),
     );
 
@@ -69,24 +71,6 @@ const nextConfig = {
       use: ['babel-loader', 'raw-loader', 'markdown-loader'],
     });
 
-    // Inspired by https://github.com/rohanray/next-fonts
-    // Load Bootstrap and Font-Awesome fonts
-    config.module.rules.push({
-      test: /fonts[\\/].*\.(woff|woff2|eot|ttf|otf|svg)$/,
-      use: [
-        {
-          loader: 'url-loader',
-          options: {
-            limit: 8192,
-            fallback: 'file-loader',
-            publicPath: '/_next/static/fonts/',
-            outputPath: 'static/fonts/',
-            name: '[name]-[hash].[ext]',
-          },
-        },
-      ],
-    });
-
     // Configuration for images
     config.module.rules.unshift({
       test: /public\/.*\/images[\\/].*\.(jpg|gif|png|svg)$/,
@@ -124,6 +108,13 @@ const nextConfig = {
       config.optimization.minimize = false;
     }
 
+    // mjs
+    config.module.rules.push({
+      test: /\.mjs$/,
+      include: /node_modules/,
+      type: 'javascript/auto',
+    });
+
     return config;
   },
   async headers() {
@@ -133,6 +124,9 @@ const nextConfig = {
     } else {
       return [];
     }
+  },
+  async rewrites() {
+    return REWRITES;
   },
 };
 

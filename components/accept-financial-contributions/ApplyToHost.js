@@ -5,7 +5,7 @@ import styled from 'styled-components';
 
 import StyledTag from '../../components/StyledTag';
 
-import CollectiveNavbar from '../CollectiveNavbar';
+import CollectiveNavbar from '../collective-navbar';
 import Container from '../Container';
 import { Box, Flex } from '../Grid';
 import StyledButton from '../StyledButton';
@@ -57,16 +57,16 @@ class ApplyToHost extends React.Component {
       },
       applyToHost: {
         id: 'pricing.applyFiscalHost',
-        defaultMessage: 'Apply to a fiscal host',
+        defaultMessage: 'Apply to a Fiscal Host',
       },
       infoParagraph: {
         id: 'fiscalHost.apply.info',
         defaultMessage:
-          "With this option, you don't need to set up a legal entity and bank account for your project. The fiscal host will hold funds on your behalf, and take care of accounting, invoices, tax, admin, payments, and liability. Most hosts charge a fee for this service (you can review these details on the host's page before confirming).",
+          "With this option, you don't need a legal entity and bank account for your project. The Fiscal Host will hold funds on your behalf, and take care of accounting, invoices, tax, admin, payments, and liability. Most Hosts charge a fee for this service (you'll have a chance to review these details before applying to join a Host).",
       },
       becomeHost: {
-        id: 'home.fiscalHost.becomeHostBtn',
-        defaultMessage: 'Become a fiscal host',
+        id: 'home.becomeFiscalHost',
+        defaultMessage: 'Become a Fiscal Host',
       },
       interestedInHosting: {
         id: 'fiscalHost.interestedInHosting',
@@ -74,11 +74,11 @@ class ApplyToHost extends React.Component {
       },
       seeMoreHosts: {
         id: 'fiscalHost.seeMoreHosts',
-        defaultMessage: 'See more hosts',
+        defaultMessage: 'See more Hosts',
       },
       allFiscalHosts: {
         id: 'fiscalHost.allFiscalHosts',
-        defaultMessage: 'All fiscal hosts',
+        defaultMessage: 'All Fiscal Hosts',
       },
     });
 
@@ -104,7 +104,7 @@ class ApplyToHost extends React.Component {
 
     return (
       <Fragment>
-        <CollectiveNavbar collective={collective} onlyInfos={true} />
+        <CollectiveNavbar collective={collective} />
         <Box mb={4} mt={5}>
           <H1
             fontSize={['20px', '32px']}
@@ -116,7 +116,7 @@ class ApplyToHost extends React.Component {
             {intl.formatMessage(this.messages.header)}
           </H1>
         </Box>
-        <Container px={[1, null, 7]}>
+        <Container px={[1, null, 7]} mb={5}>
           <Container
             display="flex"
             alignItems={['center', 'flex-end']}

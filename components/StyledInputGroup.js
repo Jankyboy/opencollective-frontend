@@ -106,10 +106,10 @@ const StyledInputGroup = ({
           <Container
             fontSize="14px"
             borderRadius="4px 0 0 4px"
-            py={2}
-            px={2}
+            p={2}
             color={getColor({ error, success })}
             maxHeight="100%"
+            whiteSpace="nowrap"
             {...prependProps}
             bg={(disabled && 'black.50') || get(prependProps, 'bg') || getBgColor({ error, focused, success })}
           >
@@ -128,6 +128,8 @@ const StyledInputGroup = ({
           px={2}
           maxHeight="100%"
           error={error}
+          minWidth="0"
+          width="100%"
           {...inputProps}
           onFocus={e => {
             setFocus(true);
@@ -155,7 +157,7 @@ const StyledInputGroup = ({
           </Container>
         )}
       </InputContainer>
-      {error && typeof error !== 'boolean' && (
+      {Boolean(error) && typeof error !== 'boolean' && (
         <Span display="block" color="red.500" pt={2} fontSize="10px">
           {error}
         </Span>

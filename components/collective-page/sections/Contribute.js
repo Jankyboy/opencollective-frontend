@@ -1,27 +1,22 @@
 import React, { Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { graphql } from '@apollo/client/react/hoc';
-import { get } from '@styled-system/css';
-import { cloneDeep, orderBy, partition, set } from 'lodash';
+import { cloneDeep, get, orderBy, set } from 'lodash';
 import memoizeOne from 'memoize-one';
 import dynamic from 'next/dynamic';
 import { FormattedMessage } from 'react-intl';
-import styled from 'styled-components';
 
 import { CollectiveType } from '../../../lib/constants/collectives';
 import { TierTypes } from '../../../lib/constants/tiers-types';
 import { getErrorFromGraphqlException } from '../../../lib/errors';
-import { isPastEvent } from '../../../lib/events';
+import { canOrderTicketsFromEvent, isPastEvent } from '../../../lib/events';
 import { API_V2_CONTEXT } from '../../../lib/graphql/helpers';
 
-import { getCollectivePageQueryVariables } from '../../../pages/collective-page';
 import Container from '../../Container';
 import ContainerOverlay from '../../ContainerOverlay';
 import { CONTRIBUTE_CARD_WIDTH } from '../../contribute-cards/Contribute';
 import ContributeCardContainer, { CONTRIBUTE_CARD_PADDING_X } from '../../contribute-cards/ContributeCardContainer';
-import ContributeCollective from '../../contribute-cards/ContributeCollective';
 import ContributeCustom from '../../contribute-cards/ContributeCustom';
-import ContributeEvent from '../../contribute-cards/ContributeEvent';
 import ContributeTier from '../../contribute-cards/ContributeTier';
 import CreateNew from '../../contribute-cards/CreateNew';
 import { Box, Flex } from '../../Grid';
@@ -29,25 +24,16 @@ import HorizontalScroller from '../../HorizontalScroller';
 import Link from '../../Link';
 import StyledButton from '../../StyledButton';
 import StyledSpinner from '../../StyledSpinner';
-import { H3, H4, P } from '../../Text';
+import { H3, P } from '../../Text';
 import ContainerSectionContent from '../ContainerSectionContent';
 import ContributeCardsContainer from '../ContributeCardsContainer';
 import { editAccountSettingMutation } from '../graphql/mutations';
-import { collectivePageQuery } from '../graphql/queries';
-import SectionTitle from '../SectionTitle';
-import TopContributors from '../TopContributors';
+import { collectivePageQuery, getCollectivePageQueryVariables } from '../graphql/queries';
 
 // Dynamic imports
 const AdminContributeCardsContainer = dynamic(() => import('../../contribute-cards/AdminContributeCardsContainer'), {
   ssr: false,
 });
-
-/** The container for Top Contributors view */
-const TopContributorsContainer = styled.div`
-  padding: 32px 16px;
-  margin-top: 48px;
-  background-color: #f5f7fa;
-`;
 
 const TIERS_ORDER_KEY = 'collectivePage.tiersOrder';
 
@@ -84,6 +70,7 @@ class SectionContribute extends React.PureComponent {
       parentCollective: PropTypes.shape({
         slug: PropTypes.string.isRequired,
       }),
+      name: PropTypes.string,
     }),
     contributorsStats: PropTypes.object,
     contributors: PropTypes.arrayOf(
@@ -106,44 +93,6 @@ class SectionContribute extends React.PureComponent {
   onTiersAdminReady = () => {
     this.setState({ showTiersAdmin: true });
   };
-
-  getTopContributors = memoizeOne(contributors => {
-    const topOrgs = [];
-    const topIndividuals = [];
-
-    for (const contributor of contributors) {
-      // We only care about financial contributors that donated $$$
-      if (!contributor.isBacker || !contributor.totalAmountDonated) {
-        continue;
-      }
-
-      // Put contributors in the array corresponding to their types
-      if (contributor.type === CollectiveType.USER) {
-        topIndividuals.push(contributor);
-      } else if (contributor.type === CollectiveType.ORGANIZATION || contributor.type === CollectiveType.COLLECTIVE) {
-        topOrgs.push(contributor);
-      }
-
-      if (topIndividuals.length >= 10 && topOrgs.length >= 10) {
-        break;
-      }
-    }
-
-    // If one of the two categories is not filled, complete with more contributors from the other
-    const nbColsPerCategory = 2;
-    const nbFreeColsFromOrgs = nbColsPerCategory - Math.ceil(topOrgs.length / 5);
-    const nbFreeColsFromIndividuals = nbColsPerCategory - Math.ceil(topOrgs.length / 5);
-    let takeNbOrgs = 10;
-    let takeNbIndividuals = 10;
-
-    if (nbFreeColsFromOrgs > 0) {
-      takeNbIndividuals += nbFreeColsFromOrgs * 5;
-    } else if (nbFreeColsFromIndividuals > 0) {
-      takeNbOrgs += nbFreeColsFromIndividuals * 5;
-    }
-
-    return [topOrgs.slice(0, takeNbOrgs), topIndividuals.slice(0, takeNbIndividuals)];
-  });
 
   getFinancialContributorsWithoutTier = memoizeOne(contributors => {
     return contributors.filter(c => c.isBacker && (c.tiersIds.length === 0 || c.tiersIds[0] === null));
@@ -245,12 +194,7 @@ class SectionContribute extends React.PureComponent {
         waysToContribute.push({
           key: tier.id,
           Component: ContributeTier,
-          componentProps: {
-            collective,
-            tier,
-            hideContributors: hasNoContributor,
-            disableCTA: !canContribute,
-          },
+          componentProps: { collective, tier, hideContributors: hasNoContributor },
         });
       }
     });
@@ -258,15 +202,17 @@ class SectionContribute extends React.PureComponent {
     return waysToContribute;
   });
 
-  triageEvents = memoizeOne(events => {
-    return partition(events, isPastEvent);
+  sortTicketTiers = memoizeOne(tiers => {
+    return orderBy([...tiers], ['endsAt'], ['desc']);
+  });
+
+  filterTickets = memoizeOne(tiers => {
+    return tiers.filter(tier => tier.type == TierTypes.TICKET);
   });
 
   render() {
     const { collective, tiers, events, connectedCollectives, contributors, isAdmin } = this.props;
     const { draggingContributionsOrder, isSaving, showTiersAdmin } = this.state;
-    const [topOrganizations, topIndividuals] = this.getTopContributors(contributors);
-    const hasNoContributorForEvents = !events.find(event => event.contributors.length > 0);
     const orderKeys = draggingContributionsOrder || this.getCollectiveContributionCardsOrder();
     const sortedTiers = this.getSortedCollectiveTiers(tiers, orderKeys);
     const isEvent = collective.type === CollectiveType.EVENT;
@@ -280,7 +226,10 @@ class SectionContribute extends React.PureComponent {
     const hasHost = collective.host;
     const isHost = collective.isHost;
     const waysToContribute = this.getFinancialContributions(sortedTiers);
-    const [pastEvents, upcomingEvents] = this.triageEvents(events);
+    const hasNoContributor = !this.hasContributors(contributors);
+    const sortedTicketTiers = this.sortTicketTiers(this.filterTickets(tiers));
+    const hideTicketsFromNonAdmins = (sortedTicketTiers.length === 0 || !collective.isActive) && !isAdmin;
+    const cannotOrderTickets = (!hasContribute && !isAdmin) || (!canOrderTicketsFromEvent(collective) && !isAdmin);
 
     /*
     cases
@@ -296,22 +245,20 @@ class SectionContribute extends React.PureComponent {
     }
 
     return (
-      <Box pt={[4, 5]}>
+      <Fragment>
+        {/* "Start accepting financial contributions" for admins */}
         {isAdmin && !hasHost && !isHost && (
-          <ContainerSectionContent pt={5} pb={3}>
-            <SectionTitle mb={24}>
-              <FormattedMessage id="Contributions" defaultMessage="Contributions" />
-            </SectionTitle>
+          <ContainerSectionContent py={4}>
             <Flex mb={4} justifyContent="space-between" alignItems="center" flexWrap="wrap">
               <P color="black.700" my={2} mr={2} css={{ flex: '1 0 50%', maxWidth: 780 }}>
                 <FormattedMessage
                   id="contributions.subtitle"
-                  defaultMessage="There are no contributions yet. To start accepting financial contributions, please choose a fiscal host."
+                  defaultMessage="To accept financial contributions, you need to complete your setup and decide where your funds will be held."
                 />
               </P>
             </Flex>
             <Box my={5}>
-              <Link route={'accept-financial-contributions'} params={{ slug: collective.slug }}>
+              <Link href={`/${collective.slug}/accept-financial-contributions`}>
                 <StyledButton buttonStyle="primary" buttonSize="large">
                   <FormattedMessage id="contributions.startAccepting" defaultMessage="Start accepting contributions" />
                 </StyledButton>
@@ -322,22 +269,14 @@ class SectionContribute extends React.PureComponent {
 
         {((isAdmin && hasHost) || (isAdmin && isHost) || (!isAdmin && isActive)) && (
           <Fragment>
-            <ContainerSectionContent>
-              <SectionTitle>
-                <FormattedMessage id="CP.Contribute.Title" defaultMessage="Become a contributor" />
-              </SectionTitle>
-            </ContainerSectionContent>
-
+            {/* Financial contributions tiers */}
             {hasContribute && (
-              <Box mb={4} data-cy="financial-contributions">
+              <Box pb={4} data-cy="financial-contributions">
                 <HorizontalScroller getScrollDistance={this.getContributeCardsScrollDistance}>
                   {(ref, Chevrons) => (
                     <div>
                       <ContainerSectionContent>
                         <Flex justifyContent="space-between" alignItems="center" mb={3}>
-                          <H3 fontSize="20px" fontWeight="600" color="black.700">
-                            <FormattedMessage id="CP.Contribute.Financial" defaultMessage="Financial contributions" />
-                          </H3>
                           <Box m={2} flex="0 0 50px">
                             <Chevrons />
                           </Box>
@@ -378,95 +317,64 @@ class SectionContribute extends React.PureComponent {
                 </HorizontalScroller>
               </Box>
             )}
-            {hasOtherWaysToContribute && (
-              <HorizontalScroller getScrollDistance={this.getContributeCardsScrollDistance}>
-                {(ref, Chevrons) => (
-                  <div>
-                    <ContainerSectionContent>
-                      <Flex justifyContent="space-between" alignItems="center" mb={3}>
-                        <H3 fontSize="20px" fontWeight="600" color="black.700">
-                          {connectedCollectives.length > 0 ? (
-                            <FormattedMessage
-                              id="SectionContribute.MoreWays"
-                              defaultMessage="More ways to contribute"
-                            />
-                          ) : (
-                            <FormattedMessage id="Events" defaultMessage="Events" />
-                          )}
-                        </H3>
-                        <Box m={2} flex="0 0 50px">
-                          <Chevrons />
-                        </Box>
-                      </Flex>
-                    </ContainerSectionContent>
 
-                    <ContributeCardsContainer ref={ref}>
-                      {upcomingEvents.map(event => (
-                        <Box key={event.id} px={CONTRIBUTE_CARD_PADDING_X}>
-                          <ContributeEvent
-                            collective={collective}
-                            event={event}
-                            hideContributors={hasNoContributorForEvents}
-                            disableCTA={!collective.isActive || !event.isActive}
-                          />
-                        </Box>
-                      ))}
-                      {connectedCollectives.map(({ id, collective }) => (
-                        <Box key={id} px={CONTRIBUTE_CARD_PADDING_X}>
-                          <ContributeCollective collective={collective} />
-                        </Box>
-                      ))}
-                      {pastEvents.map(event => (
-                        <Box key={event.id} px={CONTRIBUTE_CARD_PADDING_X}>
-                          <ContributeEvent
-                            collective={collective}
-                            event={event}
-                            hideContributors={hasNoContributorForEvents}
-                            disableCTA={!collective.isActive || !event.isActive}
-                          />
-                        </Box>
-                      ))}
-                      {isAdmin && (
-                        <Box px={CONTRIBUTE_CARD_PADDING_X} minHeight={150}>
-                          <CreateNew route={`/${collective.slug}/events/create`} data-cy="create-event">
-                            <FormattedMessage id="event.create.btn" defaultMessage="Create Event" />
-                          </CreateNew>
-                        </Box>
-                      )}
-                    </ContributeCardsContainer>
-                  </div>
-                )}
-              </HorizontalScroller>
+            {/* Tickets for type EVENT */}
+            {isEvent && !cannotOrderTickets && !hideTicketsFromNonAdmins && (
+              <Box pb={4} data-cy="Tickets">
+                <HorizontalScroller getScrollDistance={this.getContributeCardsScrollDistance}>
+                  {(ref, Chevrons) => (
+                    <div>
+                      <ContainerSectionContent>
+                        <Flex justifyContent="space-between" alignItems="center" mb={3}>
+                          <H3 fontSize="20px" fontWeight="600" color="black.700">
+                            <FormattedMessage id="section.tickets.title" defaultMessage="Tickets" />
+                          </H3>
+                          <Box m={2} flex="0 0 50px">
+                            <Chevrons />
+                          </Box>
+                        </Flex>
+                      </ContainerSectionContent>
+
+                      <ContributeCardsContainer ref={ref}>
+                        {sortedTicketTiers.map(tier => (
+                          <ContributeCardContainer key={tier.id}>
+                            <ContributeTier
+                              collective={collective}
+                              tier={tier}
+                              hideContributors={hasNoContributor}
+                              disableCTA={!collective.isActive}
+                            />
+                          </ContributeCardContainer>
+                        ))}
+                        {isAdmin && (
+                          <ContributeCardContainer minHeight={150}>
+                            <CreateNew
+                              route={`/${collective.parentCollective.slug}/events/${collective.slug}/edit/tickets`}
+                            >
+                              <FormattedMessage id="SectionTickets.CreateTicket" defaultMessage="Create Ticket" />
+                            </CreateNew>
+                          </ContributeCardContainer>
+                        )}
+                      </ContributeCardsContainer>
+                    </div>
+                  )}
+                </HorizontalScroller>
+              </Box>
             )}
+
+            {/* "View all ways to contribute" button */}
             {!isEvent && (
-              <ContainerSectionContent>
-                <Link route="contribute" params={{ collectiveSlug: collective.slug, verb: 'contribute' }}>
+              <ContainerSectionContent pb={4}>
+                <Link href={`/${collective.slug}/contribute`}>
                   <StyledButton mt={3} width={1} buttonSize="small" fontSize="14px">
-                    <FormattedMessage id="SectionContribute.All" defaultMessage="View all the ways to contribute" /> →
+                    <FormattedMessage id="SectionContribute.All" defaultMessage="All ways to contribute" /> →
                   </StyledButton>
                 </Link>
               </ContainerSectionContent>
             )}
-            {!isEvent && (topOrganizations.length !== 0 || topIndividuals.length !== 0) && (
-              <TopContributorsContainer>
-                <Container maxWidth={1090} m="0 auto" px={[15, 30]}>
-                  <H4 fontWeight="normal" color="black.700" mb={3}>
-                    <FormattedMessage
-                      id="SectionContribute.TopContributors"
-                      defaultMessage="Top financial contributors"
-                    />
-                  </H4>
-                  <TopContributors
-                    organizations={topOrganizations}
-                    individuals={topIndividuals}
-                    currency={collective.currency}
-                  />
-                </Container>
-              </TopContributorsContainer>
-            )}
           </Fragment>
         )}
-      </Box>
+      </Fragment>
     );
   }
 }

@@ -9,10 +9,10 @@ import { generateNotFoundError } from '../lib/errors';
 
 import CollectivePageContent from '../components/collective-page';
 import CollectiveNotificationBar from '../components/collective-page/CollectiveNotificationBar';
-import { collectivePageQuery } from '../components/collective-page/graphql/queries';
+import { preloadCollectivePageGraphlQueries } from '../components/collective-page/graphql/preload';
+import { collectivePageQuery, getCollectivePageQueryVariables } from '../components/collective-page/graphql/queries';
 import CollectiveThemeProvider from '../components/CollectiveThemeProvider';
 import Container from '../components/Container';
-import { MAX_CONTRIBUTORS_PER_CONTRIBUTE_CARD } from '../components/contribute-cards/Contribute';
 import ErrorPage from '../components/ErrorPage';
 import Loading from '../components/Loading';
 import OnboardingModal from '../components/onboarding-modal/OnboardingModal';
@@ -31,6 +31,12 @@ const IncognitoUserCollective = dynamic(
   { loading: Loading },
 );
 
+/** A page rendered when collective is guest */
+const GuestUserProfile = dynamic(
+  () => import(/* webpackChunkName: 'GuestUserProfile' */ '../components/GuestUserProfile'),
+  { loading: Loading },
+);
+
 /** Add global style to enable smooth scroll on the page */
 const GlobalStyles = createGlobalStyle`
   html {
@@ -46,12 +52,20 @@ const GlobalStyles = createGlobalStyle`
  * to render `components/collective-page` with everything needed.
  */
 class CollectivePage extends React.Component {
-  static getInitialProps({ req, res, query: { slug, status, step, mode } }) {
+  static async getInitialProps({ client, req, res, query: { slug, status, step, mode } }) {
     if (res && req && (req.language || req.locale === 'en')) {
       res.set('Cache-Control', 'public, s-maxage=300');
     }
 
-    return { slug, status, step, mode };
+    let skipDataFromTree = false;
+
+    // If on server side
+    if (req) {
+      await preloadCollectivePageGraphlQueries(slug, client);
+      skipDataFromTree = true;
+    }
+
+    return { slug, status, step, mode, skipDataFromTree };
   }
 
   static propTypes = {
@@ -82,6 +96,7 @@ class CollectivePage extends React.Component {
         isActive: PropTypes.bool,
         isPledged: PropTypes.bool,
         isIncognito: PropTypes.bool,
+        isGuest: PropTypes.bool,
         parentCollective: PropTypes.shape({ slug: PropTypes.string, image: PropTypes.string }),
         host: PropTypes.object,
         stats: PropTypes.object,
@@ -136,6 +151,10 @@ class CollectivePage extends React.Component {
     this.setState({ showOnboardingModal: bool });
   };
 
+  getCanonicalURL(slug) {
+    return `${process.env.WEBSITE_URL}/${slug}`;
+  }
+
   render() {
     const { slug, data, LoggedInUser, status, step, mode } = this.props;
     const { showOnboardingModal } = this.state;
@@ -151,13 +170,15 @@ class CollectivePage extends React.Component {
         return <PledgedCollectivePage collective={data.Collective} />;
       } else if (data.Collective.isIncognito) {
         return <IncognitoUserCollective collective={data.Collective} />;
+      } else if (data.Collective.isGuest) {
+        return <GuestUserProfile account={data.Collective} />;
       }
     }
 
     const collective = data && data.Collective;
 
     return (
-      <Page {...this.getPageMetaData(collective)} withoutGlobalStyles>
+      <Page canonicalURL={this.getCanonicalURL(slug)} {...this.getPageMetaData(collective)}>
         <GlobalStyles smooth={this.state.smooth} />
         {loading ? (
           <Container py={[5, 6]}>
@@ -170,6 +191,7 @@ class CollectivePage extends React.Component {
               host={collective.host}
               status={status}
               LoggedInUser={LoggedInUser}
+              refetch={data.refetch}
             />
             <CollectiveThemeProvider collective={collective}>
               {({ onPrimaryColorChange }) => (
@@ -198,7 +220,7 @@ class CollectivePage extends React.Component {
                 />
               )}
             </CollectiveThemeProvider>
-            {LoggedInUser && mode === 'onboarding' && (
+            {mode === 'onboarding' && LoggedInUser?.canEditCollective(collective) && (
               <OnboardingModal
                 showOnboardingModal={showOnboardingModal}
                 setShowOnboardingModal={this.setShowOnboardingModal}
@@ -214,13 +236,6 @@ class CollectivePage extends React.Component {
     );
   }
 }
-
-export const getCollectivePageQueryVariables = collectiveSlug => {
-  return {
-    slug: collectiveSlug,
-    nbContributorsPerContributeCard: MAX_CONTRIBUTORS_PER_CONTRIBUTE_CARD,
-  };
-};
 
 const addCollectivePageData = graphql(collectivePageQuery, {
   options: props => ({

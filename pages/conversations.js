@@ -6,12 +6,13 @@ import { withRouter } from 'next/router';
 import { FormattedMessage } from 'react-intl';
 
 import hasFeature, { FEATURES } from '../lib/allowed-features';
+import { NAVBAR_CATEGORIES } from '../lib/collective-sections';
 import { generateNotFoundError } from '../lib/errors';
 import { API_V2_CONTEXT, gqlV2 } from '../lib/graphql/helpers';
-import { Router } from '../server/pages';
 
+import CollectiveNavbar from '../components/collective-navbar';
 import { Sections } from '../components/collective-page/_constants';
-import CollectiveNavbar from '../components/CollectiveNavbar';
+import { collectiveNavbarFieldsFragment } from '../components/collective-page/graphql/fragments';
 import CollectiveThemeProvider from '../components/CollectiveThemeProvider';
 import Container from '../components/Container';
 import ConversationsList from '../components/conversations/ConversationsList';
@@ -63,6 +64,7 @@ class ConversationsPage extends React.Component {
         ).isRequired,
       }),
     }).isRequired, // from withData
+    router: PropTypes.object,
   };
 
   getPageMetaData(collective) {
@@ -75,7 +77,7 @@ class ConversationsPage extends React.Component {
 
   resetTag = () => {
     const { collectiveSlug } = this.props;
-    Router.pushRoute('conversations', { collectiveSlug });
+    this.props.router.push(`/${collectiveSlug}/conversations`);
   };
 
   /** Must only be called when dataIsReady */
@@ -95,7 +97,7 @@ class ConversationsPage extends React.Component {
               />
             </MessageBox>
           )}
-          <Link route="create-conversation" params={{ collectiveSlug }}>
+          <Link href={`/${collectiveSlug}/conversations/new`}>
             <StyledButton buttonStyle="primary" buttonSize="large">
               <FormattedMessage id="conversations.createFirst" defaultMessage="Start a new conversation" />
             </StyledButton>
@@ -123,15 +125,19 @@ class ConversationsPage extends React.Component {
     }
 
     return (
-      <Page collective={collective} {...this.getPageMetaData(collective)} withoutGlobalStyles>
+      <Page collective={collective} {...this.getPageMetaData(collective)}>
         {!dataIsReady && data.loading ? (
-          <Container borderTop="1px solid #E8E9EB">
+          <Container>
             <Loading />
           </Container>
         ) : (
           <CollectiveThemeProvider collective={collective}>
-            <Container borderTop="1px solid #E8E9EB" data-cy="page-conversations">
-              <CollectiveNavbar collective={collective} selected={Sections.CONVERSATIONS} />
+            <Container data-cy="page-conversations">
+              <CollectiveNavbar
+                collective={collective}
+                selected={Sections.CONVERSATIONS}
+                selectedCategory={NAVBAR_CATEGORIES.CONNECT}
+              />
               <Container py={[4, 5]} px={[2, 3, 4]}>
                 <Container maxWidth={1200} m="0 auto">
                   <H1 fontSize="40px" fontWeight="normal" textAlign="left" mb={2}>
@@ -141,13 +147,13 @@ class ConversationsPage extends React.Component {
                     <P color="black.700" css={{ flex: '0 1 70%' }}>
                       <FormattedMessage
                         id="conversations.subtitle"
-                        defaultMessage="Let’s get the ball rolling! This is where things get planned and sometimes this is where things get done. Ask questions, thank people for their efforts, and contribute your skills to the service of the community."
+                        defaultMessage="Let’s get the discussion going! This is a space for the community to converse, ask questions, say thank you, and get things done together."
                       />
                     </P>
                     <Flex flex="0 0 300px" flexWrap="wrap">
-                      <Link route="create-conversation" params={{ collectiveSlug }}>
+                      <Link href={`/${collectiveSlug}/conversations/new`}>
                         <StyledButton buttonStyle="primary" m={2}>
-                          <FormattedMessage id="conversations.create" defaultMessage="Create conversation" />
+                          <FormattedMessage id="conversations.create" defaultMessage="Create a Conversation" />
                         </StyledButton>
                       </Link>
                     </Flex>
@@ -176,7 +182,7 @@ class ConversationsPage extends React.Component {
                                   {tag}
                                 </StyledTag>
                               ) : (
-                                <Link key={tag} route="conversations" params={{ collectiveSlug, tag }}>
+                                <Link key={tag} href={{ pathname: `/${collectiveSlug}/conversations`, query: { tag } }}>
                                   <StyledTag variant="rounded-right" mb="4px" mr="4px">
                                     {tag}
                                   </StyledTag>
@@ -219,9 +225,13 @@ const conversationsPageQuery = gqlV2/* GraphQL */ `
       ... on Collective {
         isApproved
       }
+      features {
+        ...NavbarFields
+      }
     }
   }
   ${conversationListFragment}
+  ${collectiveNavbarFieldsFragment}
 `;
 
 const addConversationsPageData = graphql(conversationsPageQuery, {

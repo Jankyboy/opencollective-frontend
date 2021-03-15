@@ -33,6 +33,7 @@ export const transactionsQueryCollectionFragment = gqlV2/* GraphQL */ `
       createdAt
       isRefunded
       isRefund
+      isOrderRejected
       toAccount {
         id
         name
@@ -40,6 +41,10 @@ export const transactionsQueryCollectionFragment = gqlV2/* GraphQL */ `
         type
         imageUrl
         isIncognito
+        settings
+        ... on Individual {
+          isGuest
+        }
         ... on Collective {
           host {
             name
@@ -59,10 +64,20 @@ export const transactionsQueryCollectionFragment = gqlV2/* GraphQL */ `
         type
         imageUrl
         isIncognito
+        ... on Individual {
+          isGuest
+        }
         ... on AccountWithHost {
           hostFeePercent
           platformFeePercent
         }
+      }
+      host {
+        id
+        name
+        slug
+        type
+        imageUrl
       }
       giftCardEmitterAccount {
         id
@@ -74,6 +89,7 @@ export const transactionsQueryCollectionFragment = gqlV2/* GraphQL */ `
       permissions {
         canRefund
         canDownloadInvoice
+        canReject
       }
       paymentMethod {
         type

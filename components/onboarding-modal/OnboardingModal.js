@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import { gql } from '@apollo/client';
 import { graphql } from '@apollo/client/react/hoc';
 import { Form, Formik } from 'formik';
+import { withRouter } from 'next/router';
 import { defineMessages, FormattedMessage, injectIntl } from 'react-intl';
 import styled, { css } from 'styled-components';
 import { isURL, matches } from 'validator';
@@ -10,7 +11,6 @@ import { isURL, matches } from 'validator';
 import { confettiFireworks } from '../../lib/confettis';
 import { getErrorFromGraphqlException } from '../../lib/errors';
 import { compose } from '../../lib/utils';
-import { Router } from '../../server/pages';
 
 import Container from '../../components/Container';
 import MessageBox from '../../components/MessageBox';
@@ -124,6 +124,7 @@ class OnboardingModal extends React.Component {
     showOnboardingModal: PropTypes.bool,
     setShowOnboardingModal: PropTypes.func,
     intl: PropTypes.object.isRequired,
+    router: PropTypes.object,
   };
 
   constructor(props) {
@@ -138,7 +139,7 @@ class OnboardingModal extends React.Component {
 
     this.messages = defineMessages({
       twitterError: { id: 'onboarding.error.twitter', defaultMessage: 'Please enter a valid Twitter handle.' },
-      githubError: { id: 'onboarding.error.github', defaultMessage: 'Please enter a valid GitHub handle.' },
+      githubError: { id: 'onboarding.error.github', defaultMessage: 'Please enter a valid GitHub URL.' },
       websiteError: { id: 'onboarding.error.website', defaultMessage: 'Please enter a valid URL.' },
     });
   }
@@ -158,7 +159,7 @@ class OnboardingModal extends React.Component {
       this.setState({ step: 0 });
     } else if (queryStep === 'administrators') {
       this.setState({ step: 1 });
-    } else if (queryStep === 'contact') {
+    } else if (queryStep === 'contact-info') {
       this.setState({ step: 2 });
     } else if (queryStep === 'success') {
       this.setState({ step: 3 });
@@ -209,11 +210,7 @@ class OnboardingModal extends React.Component {
     try {
       await this.submitContact(values);
       await this.submitAdmins();
-      Router.pushRoute('collective-with-onboarding', {
-        mode: this.props.mode,
-        slug: this.props.collective.slug,
-        step: 'success',
-      }).then(() => {
+      this.props.router.push(`/${this.props.collective.slug}/${this.props.mode}/success`).then(() => {
         confettiFireworks(5000, { zIndex: 3000 });
       });
     } catch (e) {
@@ -228,7 +225,7 @@ class OnboardingModal extends React.Component {
   onClose = () => {
     this.setState({ noOverlay: true });
     this.props.setShowOnboardingModal(false);
-    Router.pushRoute('collective', { slug: this.props.collective.slug });
+    this.props.router.push(`/${this.props.collective.slug}`);
   };
 
   validateFormik = values => {
@@ -241,7 +238,10 @@ class OnboardingModal extends React.Component {
     // https://github.com/shinnn/github-username-regex
     if (
       values.githubHandle !== '' &&
-      matches(values.githubHandle, /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i) === false
+      !matches(
+        values.githubHandle,
+        /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}(?:\/(?:[a-z\d_]|[-.]{1,99}(?=[a-z\d_])){1,99}){0,1}$/i,
+      )
     ) {
       errors.githubHandle = this.props.intl.formatMessage(this.messages['githubError']);
     }
@@ -294,8 +294,7 @@ class OnboardingModal extends React.Component {
                       <P fontSize="16px" lineHeight="24px" color="black.900" textAlign="center" mb={4} mx={2}>
                         <FormattedMessage
                           id="onboarding.success.text"
-                          defaultMessage="You're all set! Now you can make this space your own by customizing the look, start
-                        accepting contributions, and interacting with your community."
+                          defaultMessage="You're all set! Customize the look, start accepting contributions, and interact with your community."
                         />
                       </P>
                     </Box>
@@ -406,7 +405,7 @@ const editCollectiveMembersMutation = gql`
   }
 `;
 
-const addEditCollectiveMembersMutation = graphql(editCollectiveMembersMutation, {
+export const addEditCollectiveMembersMutation = graphql(editCollectiveMembersMutation, {
   name: 'editCollectiveMembers',
 });
 
@@ -428,4 +427,4 @@ const addEditCollectiveContactMutation = graphql(editCollectiveContactMutation, 
 
 const addGraphql = compose(addEditCollectiveMembersMutation, addEditCollectiveContactMutation);
 
-export default injectIntl(addGraphql(OnboardingModal));
+export default injectIntl(addGraphql(withRouter(OnboardingModal)));

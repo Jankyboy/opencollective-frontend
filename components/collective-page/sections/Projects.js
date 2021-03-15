@@ -30,6 +30,7 @@ class SectionProjects extends React.PureComponent {
       isActive: PropTypes.bool,
     }),
     isAdmin: PropTypes.bool,
+    showTitle: PropTypes.bool,
   };
 
   getContributeCardsScrollDistance(width) {
@@ -62,13 +63,15 @@ class SectionProjects extends React.PureComponent {
           <HorizontalScroller getScrollDistance={this.getContributeCardsScrollDistance}>
             {(ref, Chevrons) => (
               <div>
-                <ContainerSectionContent>
-                  <Flex justifyContent="space-between" alignItems="center" mb={3}>
-                    <Box m={2} flex="0 0 50px">
-                      <Chevrons />
-                    </Box>
-                  </Flex>
-                </ContainerSectionContent>
+                {projects.length > 1 && (
+                  <ContainerSectionContent>
+                    <Flex justifyContent="space-between" alignItems="center" mb={3}>
+                      <Box m={2} flex="0 0 50px">
+                        <Chevrons />
+                      </Box>
+                    </Flex>
+                  </ContainerSectionContent>
+                )}
 
                 <ContributeCardsContainer ref={ref}>
                   {projects.map(project => (
@@ -76,7 +79,8 @@ class SectionProjects extends React.PureComponent {
                       <ContributeProject
                         collective={collective}
                         project={project}
-                        disableCTA={!project.isActive || !project.isActive}
+                        disableCTA={!project.isActive}
+                        hideContributors={!projects.some(project => project.contributors.length)}
                       />
                     </Box>
                   ))}

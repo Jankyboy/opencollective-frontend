@@ -8,19 +8,16 @@ import { generateNotFoundError } from '../lib/errors';
 import { API_V2_CONTEXT } from '../lib/graphql/helpers';
 
 import AuthenticatedPage from '../components/AuthenticatedPage';
+import CollectiveNavbar from '../components/collective-navbar';
 import { Dimensions } from '../components/collective-page/_constants';
 import SectionTitle from '../components/collective-page/SectionTitle';
-import CollectiveNavbar from '../components/CollectiveNavbar';
 import Container from '../components/Container';
 import ErrorPage from '../components/ErrorPage';
 import { Box } from '../components/Grid';
-import I18nFormatters from '../components/I18nFormatters';
 import Loading from '../components/Loading';
 import { recurringContributionsQuery } from '../components/recurring-contributions/graphql/queries';
 import RecurringContributionsContainer from '../components/recurring-contributions/RecurringContributionsContainer';
 import StyledFilters from '../components/StyledFilters';
-import TemporaryNotification from '../components/TemporaryNotification';
-import { P } from '../components/Text';
 
 const MainContainer = styled(Container)`
   max-width: ${Dimensions.MAX_SECTION_WIDTH}px;
@@ -69,32 +66,11 @@ class recurringContributionsPage extends React.Component {
 
   constructor(props) {
     super(props);
-    this.state = { filter: 'ACTIVE', notification: false, notificationType: null, notificationText: null };
+    this.state = { filter: 'ACTIVE' };
   }
-
-  createNotification = (type, error) => {
-    this.setState({ notification: true });
-    if (type === 'error') {
-      this.setState({ notificationType: 'error' });
-      this.setState({ notificationText: error });
-    } else {
-      this.setState({ notificationType: type });
-    }
-    window.scrollTo(0, 0);
-  };
-
-  dismissNotification = () => {
-    this.setState(state => ({
-      ...state.filter,
-      notification: false,
-      notificationType: null,
-      notificationText: null,
-    }));
-  };
 
   render() {
     const { slug, data, intl } = this.props;
-    const { notification, notificationType, notificationText } = this.state;
 
     const filters = ['ACTIVE', 'MONTHLY', 'YEARLY', 'CANCELLED'];
 
@@ -117,36 +93,7 @@ class recurringContributionsPage extends React.Component {
           </Container>
         ) : (
           <Fragment>
-            {notification && (
-              <TemporaryNotification
-                onDismiss={this.dismissNotification}
-                type={notificationType === 'error' ? 'error' : 'default'}
-              >
-                {notificationType === 'activate' && (
-                  <FormattedMessage
-                    id="subscription.createSuccessActivate"
-                    defaultMessage="Recurring contribution <strong>activated</strong>! Woohoo! 🎉"
-                    values={I18nFormatters}
-                  />
-                )}
-                {notificationType === 'cancel' && (
-                  <FormattedMessage
-                    id="subscription.createSuccessCancel"
-                    defaultMessage="Your recurring contribution has been <strong>cancelled</strong>."
-                    values={I18nFormatters}
-                  />
-                )}
-                {notificationType === 'update' && (
-                  <FormattedMessage
-                    id="subscription.createSuccessUpdated"
-                    defaultMessage="Your recurring contribution has been <strong>updated</strong>."
-                    values={I18nFormatters}
-                  />
-                )}
-                {notificationType === 'error' && <P>{notificationText}</P>}
-              </TemporaryNotification>
-            )}
-            <CollectiveNavbar collective={collective} onlyInfos={true} />
+            <CollectiveNavbar collective={collective} />
             <MainContainer py={[3, 4]} px={[2, 3]}>
               <SectionTitle textAlign="left" mb={1}>
                 <FormattedMessage id="Subscriptions.Title" defaultMessage="Recurring contributions" />
@@ -165,7 +112,6 @@ class recurringContributionsPage extends React.Component {
                 recurringContributions={recurringContributions}
                 account={collective}
                 filter={this.state.filter}
-                createNotification={this.createNotification}
               />
             </MainContainer>
           </Fragment>

@@ -4,7 +4,6 @@ import { gql } from '@apollo/client';
 import { graphql } from '@apollo/client/react/hoc';
 import { get } from 'lodash';
 import { FormattedMessage } from 'react-intl';
-import sanitizeHtml from 'sanitize-html';
 import styled from 'styled-components';
 import { fontSize, maxWidth } from 'styled-system';
 
@@ -15,6 +14,7 @@ import CollectivesWithData from '../components/CollectivesWithData';
 import CollectiveThemeProvider from '../components/CollectiveThemeProvider';
 import Container from '../components/Container';
 import Footer from '../components/Footer';
+import HappyBackground from '../components/gift-cards/HappyBackground';
 import GiftCard from '../components/GiftCard';
 import { Box, Flex } from '../components/Grid';
 import Header from '../components/Header';
@@ -23,8 +23,6 @@ import MessageBox from '../components/MessageBox';
 import SearchForm from '../components/SearchForm';
 import { H1, H5, P } from '../components/Text';
 import { withUser } from '../components/UserProvider';
-import CollectiveCard from '../components/virtual-cards/CollectiveCard';
-import HappyBackground from '../components/virtual-cards/HappyBackground';
 
 const redeemedPaymentMethodQuery = gql`
   query RedeemedPaymentMethod($code: String) {
@@ -76,18 +74,9 @@ class RedeemedPage extends React.Component {
       code,
       collectiveSlug,
       amount: amount && Number(amount),
-      name: sanitizeHtml(name || '', {
-        allowedTags: [],
-        allowedAttributes: [],
-      }),
-      emitterSlug: sanitizeHtml(emitterSlug, {
-        allowedTags: [],
-        allowedAttributes: [],
-      }),
-      emitterName: sanitizeHtml(emitterName, {
-        allowedTags: [],
-        allowedAttributes: [],
-      }),
+      name: name?.trim(),
+      emitterSlug: emitterSlug?.trim(),
+      emitterName: emitterName?.trim(),
     };
   }
 
@@ -168,7 +157,7 @@ class RedeemedPage extends React.Component {
               <Box>
                 <FormattedMessage
                   id="redeemed.subtitle.line2"
-                  defaultMessage="You can now donate to any collective of your choice."
+                  defaultMessage="You can now contribute to the Collective(s) of your choice."
                 />
               </Box>
             </Subtitle>
@@ -221,20 +210,6 @@ class RedeemedPage extends React.Component {
                         collective={collective}
                         expiryDate={expiryDate}
                       />
-                      {emitter && emitter.imageUrl && (
-                        <Container position="absolute" top={[85, 115]} left={[10, 20]}>
-                          <CollectiveCard
-                            collective={emitter}
-                            mb={3}
-                            size={[48, 64]}
-                            avatarSize={[24, 32]}
-                            fontSize="14px"
-                            boxShadow="0 0 8px rgba(0, 0, 0, 0.24) inset"
-                            borderColor="blue.200"
-                            p={2}
-                          />
-                        </Container>
-                      )}
                     </Container>
                   )}
                 </Container>

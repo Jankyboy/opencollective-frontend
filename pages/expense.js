@@ -1,19 +1,21 @@
-import React from 'react';
+import React, { Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { graphql, withApollo } from '@apollo/client/react/hoc';
 import { cloneDeep, debounce, get, includes, sortBy, uniqBy, update } from 'lodash';
 import memoizeOne from 'memoize-one';
+import { withRouter } from 'next/router';
 import { defineMessages, FormattedMessage, injectIntl } from 'react-intl';
 
 import { getCollectiveTypeForUrl } from '../lib/collective.lib';
+import { NAVBAR_CATEGORIES } from '../lib/collective-sections';
 import { CollectiveType } from '../lib/constants/collectives';
+import expenseStatus from '../lib/constants/expense-status';
 import expenseTypes from '../lib/constants/expenseTypes';
 import { formatErrorMessage, generateNotFoundError, getErrorFromGraphqlException } from '../lib/errors';
 import { API_V2_CONTEXT, gqlV2 } from '../lib/graphql/helpers';
-import { Router } from '../server/pages';
 
+import CollectiveNavbar from '../components/collective-navbar';
 import { Sections } from '../components/collective-page/_constants';
-import CollectiveNavbar from '../components/CollectiveNavbar';
 import Container from '../components/Container';
 import CommentForm from '../components/conversations/CommentForm';
 import Thread from '../components/conversations/Thread';
@@ -22,6 +24,7 @@ import ExpenseAdminActions from '../components/expenses/ExpenseAdminActions';
 import ExpenseAttachedFiles from '../components/expenses/ExpenseAttachedFiles';
 import ExpenseForm, { prepareExpenseForSubmit } from '../components/expenses/ExpenseForm';
 import ExpenseInfoSidebar from '../components/expenses/ExpenseInfoSidebar';
+import ExpenseInviteNotificationBanner from '../components/expenses/ExpenseInviteNotificationBanner';
 import ExpenseNotesForm from '../components/expenses/ExpenseNotesForm';
 import ExpenseSummary from '../components/expenses/ExpenseSummary';
 import {
@@ -32,14 +35,17 @@ import MobileCollectiveInfoStickyBar from '../components/expenses/MobileCollecti
 import PrivateCommentsMessage from '../components/expenses/PrivateCommentsMessage';
 import { Box, Flex } from '../components/Grid';
 import HTMLContent from '../components/HTMLContent';
-import I18nFormatters, { getI18nLink, I18nSupportLink } from '../components/I18nFormatters';
+import { getI18nLink, I18nSupportLink } from '../components/I18nFormatters';
 import CommentIcon from '../components/icons/CommentIcon';
 import PrivateInfoIcon from '../components/icons/PrivateInfoIcon';
+import LoadingPlaceholder from '../components/LoadingPlaceholder';
 import MessageBox from '../components/MessageBox';
 import Page from '../components/Page';
 import StyledButton from '../components/StyledButton';
-import TemporaryNotification from '../components/TemporaryNotification';
+import StyledCheckbox from '../components/StyledCheckbox';
+import StyledLink from '../components/StyledLink';
 import { H1, H5, Span } from '../components/Text';
+import { TOAST_TYPE, withToasts } from '../components/ToastProvider';
 import { withUser } from '../components/UserProvider';
 
 const messages = defineMessages({
@@ -50,8 +56,8 @@ const messages = defineMessages({
 });
 
 const expensePageQuery = gqlV2/* GraphQL */ `
-  query ExpensePage($legacyExpenseId: Int!) {
-    expense(expense: { legacyId: $legacyExpenseId }) {
+  query ExpensePage($legacyExpenseId: Int!, $draftKey: String) {
+    expense(expense: { legacyId: $legacyExpenseId }, draftKey: $draftKey) {
       ...ExpensePageExpenseFields
     }
 
@@ -65,8 +71,18 @@ const expensePageQuery = gqlV2/* GraphQL */ `
 `;
 
 const editExpenseMutation = gqlV2/* GraphQL */ `
-  mutation EditExpense($expense: ExpenseUpdateInput!) {
-    editExpense(expense: $expense) {
+  mutation EditExpense($expense: ExpenseUpdateInput!, $draftKey: String) {
+    editExpense(expense: $expense, draftKey: $draftKey) {
+      ...ExpensePageExpenseFields
+    }
+  }
+
+  ${expensePageExpenseFieldsFragment}
+`;
+
+const verifyExpenseMutation = gqlV2/* GraphQL */ `
+  mutation VerifyExpense($expense: ExpenseReferenceInput!, $draftKey: String) {
+    verifyExpense(expense: $expense, draftKey: $draftKey) {
       ...ExpensePageExpenseFields
     }
   }
@@ -90,12 +106,12 @@ const SIDE_MARGIN_WIDTH = 'calc((100% - 1200px) / 2)';
 const { USER, ORGANIZATION } = CollectiveType;
 
 class ExpensePage extends React.Component {
-  static getInitialProps({ query: { parentCollectiveSlug, collectiveSlug, ExpenseId, createSuccess } }) {
+  static getInitialProps({ query: { parentCollectiveSlug, collectiveSlug, ExpenseId, key } }) {
     return {
       parentCollectiveSlug,
       collectiveSlug,
+      draftKey: key,
       legacyExpenseId: parseInt(ExpenseId),
-      createSuccess: Boolean(createSuccess),
     };
   }
 
@@ -103,16 +119,17 @@ class ExpensePage extends React.Component {
     collectiveSlug: PropTypes.string,
     parentCollectiveSlug: PropTypes.string,
     legacyExpenseId: PropTypes.number,
+    draftKey: PropTypes.string,
     LoggedInUser: PropTypes.object,
     loadingLoggedInUser: PropTypes.bool,
-    createSuccess: PropTypes.bool,
-    expenseCreated: PropTypes.string, // actually a stringed boolean 'true'
     /** @ignore from withApollo */
     client: PropTypes.object.isRequired,
     /** from withData */
     data: PropTypes.object.isRequired,
     /** from addEditExpenseMutation */
     editExpense: PropTypes.func.isRequired,
+    verifyExpense: PropTypes.func.isRequired,
+    addToast: PropTypes.func.isRequired,
     /** from injectIntl */
     intl: PropTypes.object,
     expensesTags: PropTypes.arrayOf(
@@ -121,6 +138,7 @@ class ExpensePage extends React.Component {
         tag: PropTypes.string,
       }),
     ),
+    router: PropTypes.object,
   };
 
   constructor(props) {
@@ -129,10 +147,13 @@ class ExpensePage extends React.Component {
     this.state = {
       isRefetchingDataForUser: false,
       error: null,
-      status: PAGE_STATUS.VIEW,
+      status: this.props.draftKey ? PAGE_STATUS.EDIT : PAGE_STATUS.VIEW,
       editedExpense: null,
       isSubmitting: false,
-      successMessageDismissed: false,
+      isPoolingEnabled: true,
+      tos: false,
+      newsletterOptIn: false,
+      createdUser: null,
     };
 
     this.pollingInterval = 60;
@@ -143,6 +164,24 @@ class ExpensePage extends React.Component {
   }
 
   componentDidMount() {
+    if (this.props.data.expense?.status === expenseStatus.DRAFT && this.props.draftKey) {
+      this.setState(() => ({
+        status: PAGE_STATUS.EDIT,
+        editedExpense: this.props.data.expense,
+        isPoolingEnabled: false,
+      }));
+    }
+
+    const expense = this.props.data?.expense;
+    if (
+      expense?.status == expenseStatus.UNVERIFIED &&
+      expense?.permissions?.canEdit &&
+      this.props.LoggedInUser &&
+      expense?.createdByAccount?.slug == this.props.LoggedInUser?.collective?.slug
+    ) {
+      this.handleExpenseVerification();
+    }
+
     this.handlePolling();
     document.addEventListener('mousemove', this.handlePolling);
   }
@@ -168,29 +207,31 @@ class ExpensePage extends React.Component {
   }
 
   handlePolling() {
-    if (!this.pollingStarted) {
-      if (this.pollingPaused) {
-        // The polling was paused, so we immediately refetch
-        if (this.props.data?.refetch) {
-          this.props.data.refetch();
+    if (this.state.isPoolingEnabled) {
+      if (!this.pollingStarted) {
+        if (this.pollingPaused) {
+          // The polling was paused, so we immediately refetch
+          if (this.props.data?.refetch) {
+            this.props.data.refetch();
+          }
+          this.pollingPaused = false;
         }
-        this.pollingPaused = false;
+        if (this.props.data?.startPolling(this.pollingInterval * 1000)) {
+          this.props.data.stopPolling();
+        }
+        this.pollingStarted = true;
       }
-      if (this.props.data?.startPolling(this.pollingInterval * 1000)) {
-        this.props.data.stopPolling();
-      }
-      this.pollingStarted = true;
-    }
 
-    clearTimeout(this.pollingTimeout);
-    this.pollingTimeout = setTimeout(() => {
-      // No mouse movement was detected since 60sec, we stop polling
-      if (this.props.data?.stopPolling) {
-        this.props.data.stopPolling();
-      }
-      this.pollingStarted = false;
-      this.pollingPaused = true;
-    }, this.pollingInterval * 1000);
+      clearTimeout(this.pollingTimeout);
+      this.pollingTimeout = setTimeout(() => {
+        // No mouse movement was detected since 60sec, we stop polling
+        if (this.props.data?.stopPolling) {
+          this.props.data.stopPolling();
+        }
+        this.pollingStarted = false;
+        this.pollingPaused = true;
+      }, this.pollingInterval * 1000);
+    }
   }
 
   async refetchDataForUser() {
@@ -202,12 +243,48 @@ class ExpensePage extends React.Component {
     }
   }
 
+  async handleExpenseVerification() {
+    const expense = this.props.data?.expense;
+    await this.props.verifyExpense({
+      variables: { expense: { id: expense.id } },
+    });
+
+    const { parentCollectiveSlug, collectiveSlug, legacyExpenseId, data } = this.props;
+    const parentCollectiveSlugRoute = parentCollectiveSlug ? `${parentCollectiveSlug}/` : '';
+    const collectiveType = parentCollectiveSlug ? getCollectiveTypeForUrl(data?.account) : undefined;
+    const collectiveTypeRoute = collectiveType ? `${collectiveType}/` : '';
+    await this.props.router.push(
+      `${parentCollectiveSlugRoute}${collectiveTypeRoute}${collectiveSlug}/expenses/${legacyExpenseId}`,
+    );
+    this.props.data.refetch();
+    this.props.addToast({
+      type: TOAST_TYPE.SUCCESS,
+      title: <FormattedMessage id="Expense.Submitted" defaultMessage="Expense submitted" />,
+      message: (
+        <FormattedMessage id="Expense.SuccessPage" defaultMessage="You can edit or review updates on this page." />
+      ),
+    });
+    window.scrollTo(0, 0);
+  }
+
   onSummarySubmit = async () => {
     try {
       this.setState({ isSubmitting: true, error: null });
       const { editedExpense } = this.state;
-      await this.props.editExpense({ variables: { expense: prepareExpenseForSubmit(editedExpense) } });
-      this.setState({ status: PAGE_STATUS.VIEW, isSubmitting: false, editedExpense: undefined, error: null });
+      if (!editedExpense.payee.id && this.state.newsletterOptIn) {
+        editedExpense.payee.newsletterOptIn = this.state.newsletterOptIn;
+      }
+      await this.props.editExpense({
+        variables: { expense: prepareExpenseForSubmit(editedExpense), draftKey: this.props.draftKey },
+      });
+      const createdUser = editedExpense?.payee;
+      this.setState({
+        status: PAGE_STATUS.VIEW,
+        isSubmitting: false,
+        editedExpense: undefined,
+        error: null,
+        createdUser,
+      });
     } catch (e) {
       this.setState({ error: getErrorFromGraphqlException(e), isSubmitting: false });
       this.scrollToExpenseTop();
@@ -279,46 +356,23 @@ class ExpensePage extends React.Component {
     return sortBy([...(comments || []), ...activities], 'createdAt');
   });
 
-  onSuccessMsgDismiss = () => {
-    // Replaces the route by the version without `createSuccess=true`
-    const { parentCollectiveSlug, collectiveSlug, legacyExpenseId, data } = this.props;
-    this.setState({ successMessageDismissed: true });
-    return Router.replaceRoute(
-      `expense-v2`,
-      {
-        parentCollectiveSlug,
-        collectiveSlug,
-        collectiveType: parentCollectiveSlug ? getCollectiveTypeForUrl(data?.expense?.account) : undefined,
-        ExpenseId: legacyExpenseId,
-      },
-      {
-        shallow: true, // Do not re-fetch data, do not loose state
-      },
-    );
-  };
-
   onEditBtnClick = async () => {
-    if (this.props.createSuccess) {
-      this.onSuccessMsgDismiss();
-    }
-
     return this.setState(() => ({ status: PAGE_STATUS.EDIT, editedExpense: this.props.data.expense }));
   };
 
   onDelete = async expense => {
     const collective = expense.account;
-    return Router.replaceRoute('expenses', {
-      parentCollectiveSlug: collective.parent?.slug,
-      collectiveType: collective.parent ? getCollectiveTypeForUrl(collective) : undefined,
-      collectiveSlug: collective.slug,
-    });
+    const parentCollectiveSlugRoute = collective.parent?.slug ? `${collective.parent?.slug}/` : '';
+    const collectiveType = collective.parent ? getCollectiveTypeForUrl(collective) : undefined;
+    const collectiveTypeRoute = collectiveType ? `${collectiveType}/` : '';
+    return this.props.router.replace(`${parentCollectiveSlugRoute}${collectiveTypeRoute}${collective.slug}/expenses`);
   };
 
   render() {
-    const { collectiveSlug, data, loadingLoggedInUser, createSuccess, intl } = this.props;
-    const { isRefetchingDataForUser, error, status, editedExpense, successMessageDismissed } = this.state;
+    const { collectiveSlug, data, loadingLoggedInUser, intl } = this.props;
+    const { isRefetchingDataForUser, error, status, editedExpense } = this.state;
 
-    if (!data.loading) {
+    if (!data.loading && !isRefetchingDataForUser) {
       if (!data || data.error) {
         return <ErrorPage data={data} />;
       } else if (!data.expense) {
@@ -334,6 +388,7 @@ class ExpensePage extends React.Component {
     const host = collective?.host;
     const canSeeInvoiceInfo = expense?.permissions.canSeeInvoiceInfo;
     const isInvoice = expense?.type === expenseTypes.INVOICE;
+    const isDraft = expense?.status === expenseStatus.DRAFT;
     const hasAttachedFiles = (isInvoice && canSeeInvoiceInfo) || expense?.attachedFiles?.length > 0;
     const showTaxFormMsg = includes(expense?.requiredLegalDocuments, 'US_TAX_FORM');
     const hasHeaderMsg = error || showTaxFormMsg;
@@ -341,23 +396,15 @@ class ExpensePage extends React.Component {
     const payoutProfiles = this.getPayoutProfiles(loggedInAccount);
 
     return (
-      <Page collective={collective} {...this.getPageMetaData(expense)} withoutGlobalStyles>
-        {createSuccess && !successMessageDismissed && (
-          <TemporaryNotification onDismiss={this.onSuccessMsgDismiss}>
-            <FormattedMessage
-              id="expense.createSuccess"
-              defaultMessage="<strong>Expense submitted!</strong> You can edit or review updates on this page."
-              values={I18nFormatters}
-            />
-          </TemporaryNotification>
-        )}
+      <Page collective={collective} {...this.getPageMetaData(expense)}>
         <CollectiveNavbar
           collective={collective}
           isLoading={!collective}
           selected={Sections.BUDGET}
+          selectedCategory={NAVBAR_CATEGORIES.BUDGET}
           callsToAction={{ hasSubmitExpense: status === PAGE_STATUS.VIEW }}
         />
-        <Flex flexWrap="wrap" my={[4, 5]} data-cy="expense-page-content">
+        <Flex flexDirection={['column', 'row']} my={[4, 5]} data-cy="expense-page-content">
           <Container
             display={['none', null, null, 'flex']}
             justifyContent="flex-end"
@@ -378,9 +425,16 @@ class ExpensePage extends React.Component {
               )}
             </Flex>
           </Container>
-          <Box flex="1 1 650px" minWidth={300} maxWidth={792} mr={[null, 2, 3, 4, 5]} px={2} ref={this.expenseTopRef}>
+          <Box
+            flex="1 1 650px"
+            minWidth={300}
+            maxWidth={[null, null, null, 792]}
+            mr={[null, 2, 3, 4]}
+            px={2}
+            ref={this.expenseTopRef}
+          >
             <H1 fontSize="24px" lineHeight="32px" mb={24} py={2}>
-              <FormattedMessage id="Expense.summary" defaultMessage="Expense summary" />
+              <FormattedMessage id="Summary" defaultMessage="Summary" />
             </H1>
             {error && (
               <MessageBox type="error" withIcon mb={4}>
@@ -391,7 +445,7 @@ class ExpensePage extends React.Component {
               <MessageBox type="warning" withIcon={true} mb={4}>
                 <FormattedMessage
                   id="expenseNeedsTaxFormMessage.msg"
-                  defaultMessage="We need your tax information before we can pay you. You will receive an email from HelloWorks saying Open Collective is requesting you fill out a form. This is required by the IRS (US tax agency) for everyone who invoices $600 or more per year. If you have not received the email within 24 hours, or you have any questions, please contact <I18nSupportLink></I18nSupportLink>. For more info, see our <Link>help docs about taxes</Link>."
+                  defaultMessage="We need your tax information before we can pay you. You will receive an email from HelloWorks saying Open Collective is requesting you fill out a form. This is required by the IRS (US tax agency) for everyone who invoices $600 or more per year. We also require one for grant recipients for our records. If you have not received the email within 24 hours, or you have any questions, please contact <I18nSupportLink></I18nSupportLink>. For more info, see our <Link>help docs about taxes</Link>."
                   values={{
                     I18nSupportLink,
                     Link: getI18nLink({
@@ -402,16 +456,23 @@ class ExpensePage extends React.Component {
                 />
               </MessageBox>
             )}
+            {status === PAGE_STATUS.VIEW &&
+              ((expense?.status === expenseStatus.UNVERIFIED && this.state.createdUser) || isDraft) && (
+                <ExpenseInviteNotificationBanner expense={expense} createdUser={this.state.createdUser} />
+              )}
             {status !== PAGE_STATUS.EDIT && (
               <Box mb={3}>
                 <ExpenseSummary
                   expense={status === PAGE_STATUS.EDIT_SUMMARY ? editedExpense : expense}
                   host={host}
                   isLoading={!expense}
+                  isEditing={status === PAGE_STATUS.EDIT_SUMMARY}
                   isLoadingLoggedInUser={loadingLoggedInUser || isRefetchingDataForUser}
                   permissions={expense?.permissions}
                   collective={collective}
-                  showProcessActions={status !== PAGE_STATUS.EDIT_SUMMARY}
+                  onError={error => this.setState({ error })}
+                  onEdit={this.onEditBtnClick}
+                  onDelete={this.onDelete}
                 />
                 {status !== PAGE_STATUS.EDIT_SUMMARY && (
                   <React.Fragment>
@@ -441,7 +502,65 @@ class ExpensePage extends React.Component {
                 )}
                 {status === PAGE_STATUS.EDIT_SUMMARY && (
                   <Box mt={24}>
-                    <ExpenseNotesForm onChange={this.onNotesChanges} defaultValue={expense.privateMessage} />
+                    {isDraft && !loggedInAccount && (
+                      <Fragment>
+                        <MessageBox type="info" fontSize="12px">
+                          <FormattedMessage
+                            id="Expense.SignUpInfoBox"
+                            defaultMessage="You need to create an account to receive a payment from {collectiveName}, by clicking 'Join and Submit' you agree to create an account on Open Collective."
+                            values={{ collectiveName: collective.name }}
+                          />
+                        </MessageBox>
+                        <Box mt={3}>
+                          <StyledCheckbox
+                            name="tos"
+                            label={
+                              <FormattedMessage
+                                id="TOSAndPrivacyPolicyAgreement"
+                                defaultMessage="I agree with the {toslink} and {privacylink} of Open Collective."
+                                values={{
+                                  toslink: (
+                                    <StyledLink href="/tos" openInNewTab>
+                                      <FormattedMessage id="tos" defaultMessage="terms of service" />
+                                    </StyledLink>
+                                  ),
+                                  privacylink: (
+                                    <StyledLink href="/privacypolicy" openInNewTab>
+                                      <FormattedMessage id="privacypolicy" defaultMessage="privacy policy" />
+                                    </StyledLink>
+                                  ),
+                                }}
+                              />
+                            }
+                            required
+                            onChange={({ checked }) => {
+                              this.setState({ tos: checked });
+                            }}
+                          />
+                        </Box>
+                        <Box mt={3}>
+                          <StyledCheckbox
+                            name="newsletterOptIn"
+                            label={
+                              <span>
+                                <FormattedMessage
+                                  id="newsletter.label"
+                                  defaultMessage="Receive our monthly newsletter"
+                                />
+                                .
+                              </span>
+                            }
+                            required
+                            onChange={({ checked }) => {
+                              this.setState({ newsletterOptIn: checked });
+                            }}
+                          />
+                        </Box>
+                      </Fragment>
+                    )}
+                    {!isDraft && (
+                      <ExpenseNotesForm onChange={this.onNotesChanges} defaultValue={expense.privateMessage} />
+                    )}
                     <Flex flexWrap="wrap" mt={4}>
                       <StyledButton
                         mt={2}
@@ -467,8 +586,13 @@ class ExpensePage extends React.Component {
                         data-cy="save-expense-btn"
                         onClick={this.onSummarySubmit}
                         loading={this.state.isSubmitting}
+                        disabled={isDraft ? !loggedInAccount && !this.state.tos : false}
                       >
-                        <FormattedMessage id="Expense.SaveChanges" defaultMessage="Save changes" />
+                        {isDraft && !loggedInAccount ? (
+                          <FormattedMessage id="Expense.JoinAndSubmit" defaultMessage="Join and Submit" />
+                        ) : (
+                          <FormattedMessage id="Expense.SaveChanges" defaultMessage="Save changes" />
+                        )}
                       </StyledButton>
                     </Flex>
                   </Box>
@@ -477,22 +601,27 @@ class ExpensePage extends React.Component {
             )}
             {status === PAGE_STATUS.EDIT && (
               <Box mb={3}>
-                <ExpenseForm
-                  collective={collective}
-                  loading={loadingLoggedInUser}
-                  expense={editedExpense}
-                  expensesTags={this.getSuggestedTags(collective)}
-                  payoutProfiles={payoutProfiles}
-                  onCancel={() => this.setState({ status: PAGE_STATUS.VIEW, editedExpense: null })}
-                  validateOnChange
-                  disableSubmitIfUntouched
-                  onSubmit={editedExpense =>
-                    this.setState({
-                      editedExpense,
-                      status: PAGE_STATUS.EDIT_SUMMARY,
-                    })
-                  }
-                />
+                {data.loading || loadingLoggedInUser ? (
+                  <LoadingPlaceholder width="100%" height={400} />
+                ) : (
+                  <ExpenseForm
+                    collective={collective}
+                    loading={data.loading || loadingLoggedInUser || isRefetchingDataForUser}
+                    expense={editedExpense}
+                    expensesTags={this.getSuggestedTags(collective)}
+                    payoutProfiles={payoutProfiles}
+                    loggedInAccount={loggedInAccount}
+                    onCancel={() => this.setState({ status: PAGE_STATUS.VIEW, editedExpense: null })}
+                    onSubmit={editedExpense =>
+                      this.setState({
+                        editedExpense,
+                        status: PAGE_STATUS.EDIT_SUMMARY,
+                      })
+                    }
+                    validateOnChange
+                    disableSubmitIfUntouched
+                  />
+                )}
               </Box>
             )}
             <Box my={4}>
@@ -528,12 +657,20 @@ class ExpensePage extends React.Component {
           </Box>
           <Flex flex="1 1" justifyContent={['center', null, 'flex-start', 'flex-end']} pt={80}>
             <Box minWidth={270} width={['100%', null, null, 275]} px={2}>
-              <ExpenseInfoSidebar isLoading={data.loading} collective={collective} host={host} />
+              <ExpenseInfoSidebar
+                isLoading={data.loading || loadingLoggedInUser || isRefetchingDataForUser}
+                collective={collective}
+                host={host}
+              />
             </Box>
           </Flex>
           <Box width={SIDE_MARGIN_WIDTH} />
         </Flex>
-        <MobileCollectiveInfoStickyBar isLoading={data.loading} collective={collective} host={host} />
+        <MobileCollectiveInfoStickyBar
+          isLoading={data.loading || loadingLoggedInUser || isRefetchingDataForUser}
+          collective={collective}
+          host={host}
+        />
       </Page>
     );
   }
@@ -548,4 +685,13 @@ const addEditExpenseMutation = graphql(editExpenseMutation, {
   options: { context: API_V2_CONTEXT },
 });
 
-export default injectIntl(addExpensePageData(withApollo(withUser(addEditExpenseMutation(ExpensePage)))));
+const addVerifyExpenseMutation = graphql(verifyExpenseMutation, {
+  name: 'verifyExpense',
+  options: { context: API_V2_CONTEXT },
+});
+
+export default injectIntl(
+  withToasts(
+    addVerifyExpenseMutation(addExpensePageData(withApollo(withUser(withRouter(addEditExpenseMutation(ExpensePage)))))),
+  ),
+);

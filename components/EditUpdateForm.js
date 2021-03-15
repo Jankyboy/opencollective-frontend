@@ -1,7 +1,6 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import { get, pick } from 'lodash';
-import dynamic from 'next/dynamic';
 import { FormattedMessage } from 'react-intl';
 import styled from 'styled-components';
 
@@ -10,6 +9,7 @@ import storage from '../lib/storage';
 
 import Container from './Container';
 import { Box } from './Grid';
+import RichTextEditor from './RichTextEditor';
 import StyledButton from './StyledButton';
 import StyledCheckbox from './StyledCheckbox';
 import StyledInput from './StyledInput';
@@ -24,15 +24,6 @@ const ActionButtonWrapper = styled(Container)`
     justify-content: center;
   }
 `;
-
-// Dynamic imports: this components have a huge impact on bundle size and are externalized
-// We use the DYNAMIC_IMPORT env variable to skip dynamic while using Jest
-let HTMLEditor;
-if (process.env.DYNAMIC_IMPORT) {
-  HTMLEditor = dynamic(() => import(/* webpackChunkName: 'HTMLEditor' */ './HTMLEditor'));
-} else {
-  HTMLEditor = require('./HTMLEditor').default;
-}
 
 class EditUpdateForm extends React.Component {
   static propTypes = {
@@ -90,7 +81,7 @@ class EditUpdateForm extends React.Component {
   }
 
   async onSubmit(e) {
-    this.setState({ loading: true });
+    this.setState({ loading: true, error: '' });
     if (e) {
       e.preventDefault();
     }
@@ -113,44 +104,10 @@ class EditUpdateForm extends React.Component {
 
     return (
       <UpdateFormWrapper className={`EditUpdateForm ${this.props.mode}`}>
-        <style jsx>
-          {`
-            .col {
-              float: left;
-              display: flex;
-              flex-direction: column;
-              margin-right: 1rem;
-              margin-top: 1rem;
-            }
-            .row {
-              clear: both;
-              margin-left: 0;
-              margin-right: 0;
-            }
-            .row .col.large {
-              width: 100%;
-            }
-            .row.actions {
-              margin-top: 7rem;
-            }
-            label {
-              text-transform: uppercase;
-              color: #aaaeb3;
-              font-weight: 300;
-              white-space: nowrap;
-            }
-            .netAmountInCollectiveCurrency {
-              font-weight: bold;
-            }
-            .error {
-              color: red;
-            }
-          `}
-        </style>
         <form data-cy="edit-update-form" onSubmit={this.onSubmit}>
-          <div className="row">
-            <div className="col large">
-              <Container mb={2} fontWeight="500" fontSize="1.6rem" lineHeight="1.7">
+          <Container margin="auto 0">
+            <Container width={1}>
+              <Container mb={2} mt={2} fontWeight="500" fontSize="1.6rem" lineHeight="1.7">
                 <Box as="span">Title</Box>
               </Container>
               <StyledInputField htmlFor="title">
@@ -163,22 +120,27 @@ class EditUpdateForm extends React.Component {
                     width="100%"
                     maxWidth="40em"
                     placeHolder="Normal"
+                    maxLength={250}
                     data-cy="titleInput"
                     required
                   />
                 )}
               </StyledInputField>
-            </div>
-          </div>
-          <div className="row">
-            <Container className="col large" width={1}>
-              <Container fontWeight="500" mb={2} mt={3} fontSize="1.6rem" lineHeight="1.7">
-                <Box as="span">Message</Box>
-              </Container>
-              <HTMLEditor onChange={html => this.handleChange('html', html)} defaultValue={update.html} />
             </Container>
-          </div>
-
+          </Container>
+          <Container width={1}>
+            <Container fontWeight="500" mb={2} mt={3} fontSize="1.6rem" lineHeight="1.7">
+              <Box as="span">Message</Box>
+            </Container>
+            <RichTextEditor
+              onChange={e => this.handleChange('html', e.target.value)}
+              defaultValue={update.html}
+              editorMinHeight={300}
+              editorMaxHeight={600}
+              withBorders
+              data-cy="update-content-editor"
+            />
+          </Container>
           {(!collective.isHost || update.isPrivate) && (
             <Container
               mt={3}
@@ -238,23 +200,30 @@ class EditUpdateForm extends React.Component {
             </Container>
           )}
 
-          <ActionButtonWrapper className="row actions" mx={2} my={4}>
+          <ActionButtonWrapper mx={2} my={4}>
             <StyledButton
               data-cy="edit-update-submit-btn"
               className="bluewhite"
               buttonSize="large"
               buttonStyle="primary"
               type="submit"
-              disabled={this.state.loading}
+              disabled={this.state.loading || !this.state.update.title || !this.state.update.html}
             >
               {this.state.loading && <FormattedMessage id="form.processing" defaultMessage="processing" />}
-              {!this.state.loading && <FormattedMessage id="update.new.preview" defaultMessage="Preview Update" />}
+              {!this.state.loading &&
+                (this.props.update?.publishedAt ? (
+                  <FormattedMessage id="save" defaultMessage="Save" />
+                ) : (
+                  <FormattedMessage id="update.new.preview" defaultMessage="Preview Update" />
+                ))}
             </StyledButton>
           </ActionButtonWrapper>
 
-          <div className="row">
-            <div className="col large">{this.state.error && <div className="error">{this.state.error}</div>}</div>
-          </div>
+          <Container margin="auto 0">
+            <Container width={1}>
+              {this.state.error && <Container style={{ color: 'red' }}>{this.state.error}</Container>}
+            </Container>
+          </Container>
         </form>
       </UpdateFormWrapper>
     );

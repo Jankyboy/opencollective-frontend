@@ -41,12 +41,12 @@ const TAG_TYPE_VARIANTS = {
   success: {
     backgroundColor: 'green.100',
     borderColor: 'green.500',
-    color: 'green.700',
+    color: 'green.800',
   },
   warning: {
-    backgroundColor: 'yellow.200',
+    backgroundColor: 'yellow.300',
     borderColor: 'yellow.500',
-    color: 'yellow.800',
+    color: 'yellow.900',
   },
   error: {
     backgroundColor: 'red.100',
@@ -58,16 +58,17 @@ const TAG_TYPE_VARIANTS = {
 const StyledTagBase = styled.div`
   text-align: center;
   white-space: nowrap;
+  letter-spacing: 0.06em;
 
   ${variant({
     prop: 'variant',
     variants: {
       squared: {
-        color: '#71757A',
+        color: 'black.700',
         background: '#F0F2F5',
         borderRadius: '4px',
-        padding: '8px',
-        fontSize: '8px',
+        padding: '6px 8px',
+        fontSize: '9px',
         lineHeight: '12px',
       },
       'rounded-right': {
@@ -115,7 +116,6 @@ const CloseButton = styled.button.attrs({
   border: none;
   padding: 0;
   line-height: inherit;
-  outline: none;
 `;
 
 /** Simple tag to display a short string */

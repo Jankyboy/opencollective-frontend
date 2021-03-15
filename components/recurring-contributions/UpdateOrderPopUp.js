@@ -12,6 +12,7 @@ import { API_V2_CONTEXT, gqlV2 } from '../../lib/graphql/helpers';
 
 import FormattedMoneyAmount from '../FormattedMoneyAmount';
 import { Box, Flex } from '../Grid';
+import I18nFormatters from '../I18nFormatters';
 import LoadingPlaceholder from '../LoadingPlaceholder';
 import StyledButton from '../StyledButton';
 import StyledHr from '../StyledHr';
@@ -19,6 +20,7 @@ import StyledInputAmount from '../StyledInputAmount';
 import StyledRadioList from '../StyledRadioList';
 import StyledSelect from '../StyledSelect';
 import { P } from '../Text';
+import { TOAST_TYPE, useToasts } from '../ToastProvider';
 
 const TierBox = styled(Flex)`
   border-top: 1px solid ${themeGet('colors.black.300')};
@@ -77,8 +79,35 @@ const tiersQuery = gqlV2/* GraphQL */ `
   }
 `;
 
-const UpdateOrderPopUp = ({ setMenuState, contribution, createNotification, setShowPopup }) => {
+const getTierOptions = (selectedTier, contribution) => {
+  let optionObject;
+  const objectArray = [];
+  const flexible = selectedTier.flexible || selectedTier.value?.flexible;
+  if (!flexible) {
+    optionObject = {
+      label: formatCurrency(selectedTier.amount || selectedTier.value?.amount, contribution.amount.currency),
+      value: selectedTier.amount || selectedTier.value?.amount,
+    };
+    objectArray.push(optionObject);
+    return objectArray;
+  }
+  // selectedTier.presets if it's the default tier, but selectedTier.value.preset afterwards if it's a radio list selection
+  const presets = selectedTier.presets || selectedTier.value?.presets || [500, 1000, 2000, 5000];
+
+  presets.map(preset => {
+    optionObject = {
+      label: formatCurrency(preset, contribution.amount.currency),
+      value: preset,
+    };
+    objectArray.push(optionObject);
+  });
+  objectArray.push({ label: 'Other', value: 100 });
+  return objectArray;
+};
+
+const UpdateOrderPopUp = ({ setMenuState, contribution, setShowPopup }) => {
   const intl = useIntl();
+  const { addToast } = useToasts();
 
   // state management
   const [loadingDefaultTier, setLoadingDefaultTier] = useState(true);
@@ -100,12 +129,12 @@ const UpdateOrderPopUp = ({ setMenuState, contribution, createNotification, setS
 
   const getDefaultTier = tiers => {
     if (contribution.tier === null) {
-      return tiers.find(option => option.key === 'custom-tier');
+      return tiers.find(option => option.key === `${contribution.id}-custom-tier`);
     } else {
       // for some collectives if a tier has been deleted it won't have moved the contribution
       // to the custom 'null' tier so we have to check for that
       const matchedTier = tiers.find(option => option.id === contribution.tier.id);
-      return !matchedTier ? tiers.find(option => option.key === 'custom-tier') : matchedTier;
+      return !matchedTier ? tiers.find(option => option.key === `${contribution.id}-custom-tier`) : matchedTier;
     }
   };
 
@@ -116,7 +145,7 @@ const UpdateOrderPopUp = ({ setMenuState, contribution, createNotification, setS
       return null;
     }
     const customTierOption = {
-      key: 'custom-tier',
+      key: `${contribution.id}-custom-tier`,
       title: intl.formatMessage(messages.customTier),
       flexible: true,
       amount: 100,
@@ -129,7 +158,7 @@ const UpdateOrderPopUp = ({ setMenuState, contribution, createNotification, setS
     const tierOptions = tiers
       .filter(tier => tier.interval !== null)
       .map(tier => ({
-        key: `tier-${tier.id}`,
+        key: `${contribution.id}-tier-${tier.id}`,
         title: tier.name,
         flexible: tier.amountType === 'FLEXIBLE' ? true : false,
         amount: tier.amountType === 'FLEXIBLE' ? tier.minimumAmount.value * 100 : tier.amount.value * 100,
@@ -152,25 +181,9 @@ const UpdateOrderPopUp = ({ setMenuState, contribution, createNotification, setS
     }
   }, [mappedTierOptions]);
 
-  const getTierOptions = () => {
-    // selectedTier.presets if it's the default tier, but selectedTier.value.preset afterwards if it's a radio list selection
-    const presets = selectedTier.presets || selectedTier.value?.presets || [500, 1000, 2000, 5000];
-    const objectArray = [];
-
-    presets.map(preset => {
-      const optionObject = {
-        label: formatCurrency(preset, contribution.amount.currency),
-        value: preset,
-      };
-      objectArray.push(optionObject);
-    });
-    objectArray.push({ label: 'Other', value: 100 });
-    return objectArray;
-  };
-
   useEffect(() => {
     if (selectedTier !== null) {
-      const options = getTierOptions();
+      const options = getTierOptions(selectedTier, contribution);
       setAmountOptions(options);
       setSelectedAmountOption(first(options));
     }
@@ -191,7 +204,7 @@ const UpdateOrderPopUp = ({ setMenuState, contribution, createNotification, setS
       ) : (
         <StyledRadioList
           id="ContributionTier"
-          name="ContributionTier"
+          name={`${contribution.id}-ContributionTier`}
           keyGetter="key"
           options={mappedTierOptions}
           onChange={setSelectedTier}
@@ -302,11 +315,23 @@ const UpdateOrderPopUp = ({ setMenuState, contribution, createNotification, setS
                   },
                 },
               });
-              createNotification('update');
+              addToast({
+                type: TOAST_TYPE.SUCCESS,
+                message: (
+                  <FormattedMessage
+                    id="subscription.createSuccessUpdated"
+                    defaultMessage="Your recurring contribution has been <strong>updated</strong>."
+                    values={I18nFormatters}
+                  />
+                ),
+              });
               setShowPopup(false);
             } catch (error) {
               const errorMsg = getErrorFromGraphqlException(error).message;
-              createNotification('error', errorMsg);
+              addToast({
+                type: TOAST_TYPE.ERROR,
+                message: errorMsg,
+              });
               return false;
             }
           }}
@@ -322,7 +347,6 @@ UpdateOrderPopUp.propTypes = {
   data: PropTypes.object,
   setMenuState: PropTypes.func,
   contribution: PropTypes.object.isRequired,
-  createNotification: PropTypes.func,
   setShowPopup: PropTypes.func,
 };
 

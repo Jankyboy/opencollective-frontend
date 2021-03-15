@@ -36,6 +36,8 @@ const accountHolderFieldOptions = {
       name: 'Account Holder Name',
       type: 'text',
       example: 'Jane Doe',
+      validationRegexp: '^[^!@#$%&*+]+$',
+      validationError: 'Special characters are not allowed. (!@#$%&*+)',
     },
   ],
 };
@@ -81,7 +83,7 @@ const Input = props => {
         if (!value && input.required) {
           return `${input.name} is required`;
         } else if (!matches && value) {
-          return `Invalid ${input.name}`;
+          return input.validationError || `Invalid ${input.name}`;
         }
       };
     }
@@ -193,16 +195,6 @@ const DetailsForm = ({ disabled, getFieldName, formik, host, currency }) => {
     context: API_V2_CONTEXT,
     variables: { slug: host.slug, currency },
   });
-  React.useEffect(() => {
-    const type = get(data, 'host.transferwise.requiredFields[0].type');
-    if (type) {
-      formik.setFieldValue(getFieldName('data.type'), type);
-    }
-    // Having this effect bein triggered on updates in formik and getFieldName
-    // would result in infinite re-rendering.
-    // This is also not necessary since these props are required.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
 
   if (loading && !data) {
     return <StyledSpinner />;
@@ -211,18 +203,38 @@ const DetailsForm = ({ disabled, getFieldName, formik, host, currency }) => {
     return <P>{error.message}</P>;
   }
 
-  const [requiredFields] = data.host.transferwise.requiredFields;
-  const [addressFields, otherFields] = partition(requiredFields.fields, f =>
-    f.group.every(g => g.key.includes('address.')),
+  const transactionTypeValues = data.host.transferwise.requiredFields.map(rf => ({ label: rf.title, value: rf.type }));
+  // Some currencies offer different methods for the transaction
+  // e.g. USD allows ABA and SWIFT transactions.
+  const availableMethods = data.host.transferwise.requiredFields.find(
+    method => method.type == get(formik.values, getFieldName(`data.type`)),
+  );
+  const [addressFields, otherFields] = partition(availableMethods?.fields, field =>
+    field.group.every(g => g.key.includes('address.')),
   );
 
   return (
     <Flex flexDirection="column">
-      <Box mt={2} flex="1">
-        <P fontSize="16px" fontWeight="bold">
-          {requiredFields.title}
-        </P>
-      </Box>
+      <Field name={getFieldName('data.type')}>
+        {({ field }) => (
+          <StyledInputField name={field.name} label="Transaction Method" labelFontSize="13px" mt={3} mb={2}>
+            {({ id }) => (
+              <StyledSelect
+                inputId={id}
+                name={field.name}
+                onChange={({ value }) => {
+                  const { type, currency } = get(formik.values, getFieldName(`data`));
+                  formik.setFieldValue(getFieldName('data'), { type, currency });
+                  formik.setFieldValue(field.name, value);
+                }}
+                options={transactionTypeValues}
+                value={transactionTypeValues.find(method => method.value === availableMethods?.type) || null}
+                disabled={disabled}
+              />
+            )}
+          </StyledInputField>
+        )}
+      </Field>
       <Box mt={3} flex="1">
         <P fontSize="14px" fontWeight="bold">
           Account Information
@@ -230,7 +242,7 @@ const DetailsForm = ({ disabled, getFieldName, formik, host, currency }) => {
       </Box>
       {
         // Displays the account holder field only if the other fields are also loaded
-        Boolean(requiredFields.fields.length) && (
+        Boolean(availableMethods?.fields.length) && (
           <FieldGroup
             currency={currency}
             disabled={disabled}
@@ -258,7 +270,7 @@ const DetailsForm = ({ disabled, getFieldName, formik, host, currency }) => {
       ))}
       <Box mt={3} flex="1" fontSize="14px" fontWeight="bold">
         Recipient&apos;s Address&nbsp;
-        <StyledTooltip content="Address of the owner of the bank account (not the address of the bank)">
+        <StyledTooltip content="Bank account holder address (not the bank address)">
           <Info size={16} />
         </StyledTooltip>
       </Box>
@@ -293,6 +305,7 @@ const availableCurrenciesQuery = gqlV2/* GraphQL */ `
   query PayoutBankInformationAvailableCurrencies($slug: String, $ignoreBlockedCurrencies: Boolean) {
     host(slug: $slug) {
       slug
+      currency
       transferwise {
         availableCurrencies(ignoreBlockedCurrencies: $ignoreBlockedCurrencies)
       }
@@ -303,7 +316,7 @@ const availableCurrenciesQuery = gqlV2/* GraphQL */ `
 /**
  * Form for payout bank information. Must be used with Formik.
  */
-const PayoutBankInformationForm = ({ isNew, getFieldName, host, fixedCurrency, ignoreBlockedCurrencies }) => {
+const PayoutBankInformationForm = ({ isNew, getFieldName, host, fixedCurrency, ignoreBlockedCurrencies, optional }) => {
   const { data, loading } = useQuery(availableCurrenciesQuery, {
     context: API_V2_CONTEXT,
     variables: { slug: host.slug, ignoreBlockedCurrencies },
@@ -323,11 +336,14 @@ const PayoutBankInformationForm = ({ isNew, getFieldName, host, fixedCurrency, i
 
   const availableCurrencies = host.transferwise?.availableCurrencies || data?.host?.transferwise?.availableCurrencies;
   const currencies = formatStringOptions(fixedCurrency ? [fixedCurrency] : availableCurrencies.map(c => c.code));
+  if (optional) {
+    currencies.unshift({ label: 'No selection', value: null });
+  }
   const currencyFieldName = getFieldName('data.currency');
   const selectedCurrency = fixedCurrency || get(formik.values, currencyFieldName);
   const validateCurrencyMinimumAmount = () => {
     // Only validate minimum amount if the form has items
-    if (formik?.values?.items) {
+    if (formik?.values?.items?.length > 0) {
       const invoiceTotalAmount = formik.values.items.reduce(
         (amount, attachment) => amount + (attachment.amount || 0),
         0,
@@ -335,9 +351,9 @@ const PayoutBankInformationForm = ({ isNew, getFieldName, host, fixedCurrency, i
       const minAmountForSelectedCurrency =
         availableCurrencies.find(c => c.code === selectedCurrency)?.minInvoiceAmount * 100;
       if (invoiceTotalAmount < minAmountForSelectedCurrency) {
-        return `The minimum amount for ${selectedCurrency} is ${formatCurrency(
+        return `The minimum amount for transfering to ${selectedCurrency} is ${formatCurrency(
           minAmountForSelectedCurrency,
-          selectedCurrency,
+          host.currency,
         )}`;
       }
     }
@@ -346,20 +362,12 @@ const PayoutBankInformationForm = ({ isNew, getFieldName, host, fixedCurrency, i
   return (
     <React.Fragment>
       <Field name={currencyFieldName} validate={validateCurrencyMinimumAmount}>
-        {({ field, meta }) => (
-          <StyledInputField
-            name={field.name}
-            error={meta.error}
-            label={formatMessage(msg.currency)}
-            labelFontSize="13px"
-            mt={3}
-            mb={2}
-          >
+        {({ field }) => (
+          <StyledInputField name={field.name} label={formatMessage(msg.currency)} labelFontSize="13px" mt={3} mb={2}>
             {({ id }) => (
               <StyledSelect
                 inputId={id}
                 name={field.name}
-                error={meta.error}
                 onChange={({ value }) => {
                   formik.setFieldValue(getFieldName('data'), {});
                   formik.setFieldValue(field.name, value);
@@ -388,11 +396,13 @@ const PayoutBankInformationForm = ({ isNew, getFieldName, host, fixedCurrency, i
 PayoutBankInformationForm.propTypes = {
   host: PropTypes.shape({
     slug: PropTypes.string.isRequired,
+    currency: PropTypes.string,
     transferwise: PropTypes.shape({
       availableCurrencies: PropTypes.arrayOf(PropTypes.object),
     }),
   }).isRequired,
   isNew: PropTypes.bool,
+  optional: PropTypes.bool,
   ignoreBlockedCurrencies: PropTypes.bool,
   getFieldName: PropTypes.func.isRequired,
   /** Enforces a fixedCurrency */

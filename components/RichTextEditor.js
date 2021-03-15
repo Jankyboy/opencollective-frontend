@@ -6,10 +6,13 @@ import { v4 as uuid } from 'uuid';
 import { isURL } from 'validator';
 
 import { uploadImageWithXHR } from '../lib/api';
+import { stripHTML } from '../lib/utils';
 
+import Container from './Container';
 import HTMLContent from './HTMLContent';
 import LoadingPlaceholder from './LoadingPlaceholder';
 import MessageBox from './MessageBox';
+import StyledTag from './StyledTag';
 
 const TrixEditorContainer = styled.div`
   ${props =>
@@ -27,6 +30,7 @@ const TrixEditorContainer = styled.div`
     margin-top: 8px;
     padding-top: 8px;
     outline-offset: 0.5em;
+    overflow-y: auto;
 
     // Outline (only when there's no border)
     ${props =>
@@ -48,15 +52,20 @@ const TrixEditorContainer = styled.div`
       display: none;
     }
 
-    ${props => css({ minHeight: props.editorMinHeight })}
+    ${props =>
+      css({
+        minHeight: props.editorMinHeight,
+        maxHeight: props.editorMaxHeight,
+      })}
   }
 
   trix-toolbar {
     min-height: 40px;
     background: ${props => props.toolbarBackgroundColor};
-    box-shadow: 0px 5px 3px -3px rgba(0, 0, 0, 0.1);
+    ${props => !props.withBorders && `box-shadow: 0px 5px 3px -3px rgba(0, 0, 0, 0.1);`}
     z-index: 2;
     margin-bottom: 8px;
+    ${props => props.withBorders && `min-height: 0px; margin-bottom: 0;`}
 
     .trix-button-group {
       border-radius: 6px;
@@ -116,7 +125,7 @@ const TrixEditorContainer = styled.div`
         position: 'sticky',
         top: props.toolbarTop || 0,
         marginTop: props.toolbarOffsetY,
-        py: '10px',
+        p: '10px',
       })}
 
     /** Custom icons */
@@ -148,6 +157,7 @@ export default class RichTextEditor extends React.Component {
     /** If not provided, an id will be automatically generated which will require a component update */
     id: PropTypes.string,
     defaultValue: PropTypes.string,
+    value: PropTypes.string,
     placeholder: PropTypes.string,
     toolbarBackgroundColor: PropTypes.string.isRequired,
     /** Font size for the text */
@@ -159,6 +169,10 @@ export default class RichTextEditor extends React.Component {
     inputName: PropTypes.string,
     /** Change this prop to reset the value */
     reset: PropTypes.any,
+    /** If true, max text length will be displayed at the bottom right */
+    showCount: PropTypes.bool,
+    /** max length which is allowed */
+    maxLength: PropTypes.number,
     /** Wether the toolbar should stick to the top */
     withStickyToolbar: PropTypes.bool,
     /** This component is borderless by default. Set this to `true` to change that. */
@@ -173,6 +187,7 @@ export default class RichTextEditor extends React.Component {
     toolbarOffsetY: PropTypes.oneOfType([PropTypes.number, PropTypes.string, PropTypes.array]),
     /** Min height for the full component */
     editorMinHeight: PropTypes.oneOfType([PropTypes.number, PropTypes.string, PropTypes.array]),
+    editorMaxHeight: PropTypes.oneOfType([PropTypes.number, PropTypes.string, PropTypes.array]),
     /** If truthy, will display a red outline */
     error: PropTypes.any,
     'data-cy': PropTypes.string,
@@ -191,6 +206,7 @@ export default class RichTextEditor extends React.Component {
   constructor(props) {
     super(props);
     this.editorRef = React.createRef();
+    this.mainContainerRef = React.createRef();
     this.state = { id: props.id, error: null };
     this.isReady = false;
 
@@ -235,6 +251,21 @@ export default class RichTextEditor extends React.Component {
       this.editorRef.current.addEventListener('trix-change', this.handleChange, false);
       this.editorRef.current.addEventListener('trix-attachment-add', this.handleUpload);
       this.editorRef.current.addEventListener('trix-file-accept', this.handleFileAccept);
+      this.editorRef.current.addEventListener('trix-initialize', () => {
+        // Some special handling for links
+        if (this.mainContainerRef.current) {
+          // We must listen when the user presses the 'Enter' key and when the user clicks the 'Link' button as well
+          const linkInput = this.mainContainerRef.current.querySelector("[data-trix-input][name='href']");
+          linkInput?.addEventListener('keydown', e => {
+            if (e.key === 'Enter') {
+              this.handleLink();
+            }
+          });
+
+          const addLinkBtn = this.mainContainerRef.current.querySelector("[data-trix-method='setAttribute']");
+          addLinkBtn?.addEventListener('click', this.handleLink);
+        }
+      });
 
       // Component ready!
       this.isReady = true;
@@ -280,6 +311,22 @@ export default class RichTextEditor extends React.Component {
     const onFailure = () => this.setState({ error: 'File upload failed' });
     uploadImageWithXHR(attachment.file, { onProgress, onSuccess, onFailure });
     return e;
+  };
+
+  handleLink = () => {
+    const urlInput = this.mainContainerRef.current?.querySelector("[data-trix-input][name='href']");
+    const urlInputValue = urlInput?.value?.trim();
+
+    // Ignore missing input or empty values
+    if (!urlInputValue) {
+      return;
+    }
+
+    // Automatically add 'https://' to the url
+    // eslint-disable-next-line camelcase
+    if (isURL(urlInputValue, { require_protocol: false }) && !isURL(urlInputValue, { require_protocol: true })) {
+      urlInput.value = `https://${urlInputValue}`;
+    }
   };
 
   /** Automatically create anchors with hrefs for links */
@@ -391,11 +438,18 @@ export default class RichTextEditor extends React.Component {
       disabled,
       error,
       fontSize,
+      value,
       version,
+      showCount,
+      maxLength,
+      editorMaxHeight,
     } = this.props;
 
     return !this.state.id ? (
-      <LoadingPlaceholder height={editorMinHeight ? editorMinHeight + 56 : 200} />
+      <LoadingPlaceholder
+        maxHeight={editorMaxHeight ? editorMaxHeight + 56 : undefined}
+        height={editorMinHeight ? editorMinHeight + 56 : 200}
+      />
     ) : (
       <TrixEditorContainer
         withStickyToolbar={withStickyToolbar}
@@ -403,25 +457,44 @@ export default class RichTextEditor extends React.Component {
         toolbarOffsetY={toolbarOffsetY}
         toolbarBackgroundColor={toolbarBackgroundColor}
         editorMinHeight={editorMinHeight}
+        editorMaxHeight={editorMaxHeight}
         withBorders={withBorders}
         version={version}
         isDisabled={disabled}
         error={error}
         data-cy={this.props['data-cy']}
+        ref={this.mainContainerRef}
       >
         {this.state.error && (
           <MessageBox type="error" withIcon>
             {this.state.error.toString()}
           </MessageBox>
         )}
-        <input id={this.state.id} value={defaultValue} type="hidden" name={inputName} />
+        <input id={this.state.id} value={value || defaultValue} type="hidden" name={inputName} />
         <HTMLContent fontSize={fontSize}>
-          <trix-editor
-            ref={this.editorRef}
-            input={this.state.id}
-            autofocus={autoFocus ? true : undefined}
-            placeholder={placeholder}
-          />
+          {!showCount ? (
+            <trix-editor
+              ref={this.editorRef}
+              input={this.state.id}
+              autofocus={autoFocus ? true : undefined}
+              placeholder={placeholder}
+            />
+          ) : (
+            <Container position="relative">
+              <trix-editor
+                ref={this.editorRef}
+                input={this.state.id}
+                autofocus={autoFocus ? true : undefined}
+                placeholder={placeholder}
+              />
+              <Container position="absolute" bottom="1em" right="1em">
+                <StyledTag textTransform="uppercase">
+                  <span>{stripHTML(defaultValue).length}</span>
+                  {maxLength && <span> / {maxLength}</span>}
+                </StyledTag>
+              </Container>
+            </Container>
+          )}
         </HTMLContent>
       </TrixEditorContainer>
     );

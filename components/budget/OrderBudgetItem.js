@@ -1,195 +1,249 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import { ChevronDown } from '@styled-icons/feather/ChevronDown';
-import { ChevronUp } from '@styled-icons/feather/ChevronUp';
-import { truncate } from 'lodash';
-import { FormattedDate, FormattedMessage } from 'react-intl';
+import { FormattedDate, FormattedMessage, useIntl } from 'react-intl';
+import styled from 'styled-components';
 
 import { ORDER_STATUS } from '../../lib/constants/order-status';
-import { TransactionTypes } from '../../lib/constants/transactions';
-import { formatCurrency } from '../../lib/currency-utils';
+import { GQLV2_PAYMENT_METHOD_TYPES } from '../../lib/constants/payment-methods';
+import { i18nPaymentMethodProviderType } from '../../lib/i18n/payment-method-provider-type';
 
+import AutosizeText from '../AutosizeText';
 import Avatar from '../Avatar';
 import Container from '../Container';
-import DefinedTerm, { Terms } from '../DefinedTerm';
+import FormattedMoneyAmount from '../FormattedMoneyAmount';
 import { Box, Flex } from '../Grid';
 import LinkCollective from '../LinkCollective';
-import OrderStatusTag from '../OrderStatusTag';
-import StyledButton from '../StyledButton';
-import StyledLink from '../StyledLink';
-import { P, Span } from '../Text';
+import LoadingPlaceholder from '../LoadingPlaceholder';
+import OrderStatusTag from '../orders/OrderStatusTag';
+import ProcessOrderButtons from '../orders/ProcessOrderButtons';
+import StyledTag from '../StyledTag';
+import { H3, P, Span } from '../Text';
 import TransactionSign from '../TransactionSign';
 
-/** To separate individual information below description */
-const INFO_SEPARATOR = ' • ';
+const DetailColumnHeader = styled.div`
+  font-style: normal;
+  font-weight: bold;
+  font-size: 9px;
+  line-height: 14px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #c4c7cc;
+  margin-bottom: 2px;
+`;
 
-const OrderBudgetItem = ({ collective, fromCollective, isInverted, isExpanded, setExpanded, transaction, order }) => {
-  const isCredit = transaction.type === TransactionTypes.CREDIT;
-  const amount = transaction[isCredit ? 'amount' : 'netAmountInCollectiveCurrency'];
-  if (isInverted) {
-    [fromCollective, collective] = [collective, fromCollective];
+const ButtonsContainer = styled.div.attrs({ 'data-cy': 'order-actions' })`
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  transition: opacity 0.05s;
+  justify-content: flex-end;
+
+  @media (max-width: 40em) {
+    justify-content: center;
   }
 
+  & > *:last-child {
+    margin-right: 0;
+  }
+`;
+
+const OrderContainer = styled.div`
+  padding: 16px 27px;
+
+  @media (hover: hover) {
+    &:not(:hover):not(:focus-within) ${ButtonsContainer} {
+      opacity: 0.24;
+    }
+  }
+`;
+
+const OrderBudgetItem = ({ isLoading, order, showPlatformTip }) => {
+  const intl = useIntl();
   return (
-    <Box px={[16, 27]} py={16}>
-      <Flex flexWrap="wrap" justifyContent="space-between">
-        <Flex flex="1" minWidth="60%" mr={3}>
+    <OrderContainer>
+      <Flex justifyContent="space-between" flexWrap="wrap">
+        <Flex flex="1" minWidth="max(60%, 300px)" maxWidth={[null, '70%']}>
           <Box mr={3}>
-            <LinkCollective collective={collective || fromCollective}>
-              <Avatar collective={collective || fromCollective} radius={40} />
-            </LinkCollective>
+            {isLoading ? (
+              <LoadingPlaceholder width={40} height={40} />
+            ) : (
+              <LinkCollective collective={order.fromAccount}>
+                <Avatar collective={order.fromAccount} radius={40} />
+              </LinkCollective>
+            )}
           </Box>
-          <Box>
-            <P
-              data-cy="transaction-description"
-              fontWeight="500"
-              fontSize="14px"
-              lineHeight="21px"
-              color={transaction.description ? 'black.900' : 'black.500'}
-              title={transaction.description}
-            >
-              {transaction.description ? (
-                truncate(transaction.description, { length: 60 })
-              ) : (
-                <FormattedMessage id="NoDescription" defaultMessage="No description provided" />
-              )}
-            </P>
-            <P mt="5px" fontSize="12px" lineHeight="16px" color="black.600" data-cy="transaction-details">
-              <FormattedMessage
-                id="Transaction.from"
-                defaultMessage="from {name}"
-                values={{ name: <LinkCollective collective={fromCollective} /> }}
-              />
-              {transaction.usingVirtualCardFromCollective && (
-                <React.Fragment>
-                  {INFO_SEPARATOR}
-                  <FormattedMessage
-                    id="transaction.usingGiftCardFrom"
-                    defaultMessage="using a {giftCard} from {collective}"
-                    values={{
-                      giftCard: <DefinedTerm term={Terms.GIFT_CARD} textTransform="lowercase" />,
-                      collective: (
-                        <StyledLink as={LinkCollective} collective={transaction.usingVirtualCardFromCollective} />
-                      ),
-                    }}
-                  />
-                </React.Fragment>
-              )}
-              {INFO_SEPARATOR}
-              <span data-cy="transaction-date">
-                <FormattedDate value={transaction.createdAt} />
-              </span>
-            </P>
-          </Box>
+          {isLoading ? (
+            <LoadingPlaceholder height={60} />
+          ) : (
+            <Box>
+              <AutosizeText
+                value={order.description}
+                maxLength={255}
+                minFontSizeInPx={12}
+                maxFontSizeInPx={14}
+                lengthThreshold={72}
+              >
+                {({ value, fontSize }) => (
+                  <H3
+                    fontWeight="500"
+                    lineHeight="1.5em"
+                    textDecoration="none"
+                    color="black.900"
+                    fontSize={`${fontSize}px`}
+                    data-cy="expense-title"
+                  >
+                    {value}
+                  </H3>
+                )}
+              </AutosizeText>
+
+              <P mt="5px" fontSize="12px" color="black.600">
+                <FormattedMessage
+                  id="Order.fromTo"
+                  defaultMessage="for {account} from {contributor}"
+                  values={{
+                    contributor: <LinkCollective collective={order.fromAccount} />,
+                    account: <LinkCollective collective={order.toAccount} />,
+                  }}
+                />
+
+                {' • '}
+                <FormattedDate value={order.createdAt} />
+              </P>
+            </Box>
+          )}
         </Flex>
         <Flex flexDirection={['row', 'column']} mt={[3, 0]} flexWrap="wrap" alignItems={['center', 'flex-end']}>
-          <Container
-            display="flex"
-            my={2}
-            mr={[3, 0]}
-            minWidth={100}
-            justifyContent="flex-end"
-            data-cy="transaction-amount"
-            fontSize="16px"
-            ml="auto"
-          >
-            <TransactionSign isCredit={isCredit} />
-            <Span fontWeight="bold" mr={1}>
-              {formatCurrency(Math.abs(amount), transaction.currency)}
-            </Span>
-            <Span color="black.400" textTransform="uppercase">
-              {transaction.currency}
-            </Span>
-          </Container>
-          {order && (
-            <OrderStatusTag
-              status={order.status}
-              isRefund={Boolean(transaction.refundTransaction)}
-              fontSize="9px"
-              px="6px"
-              py="2px"
-            />
+          <Flex my={2} mr={[3, 0]} minWidth={100} justifyContent="flex-end" data-cy="order-amount">
+            {isLoading ? (
+              <LoadingPlaceholder height={19} width={120} />
+            ) : (
+              <Flex flexDirection="column" alignItems={['flex-start', 'flex-end']}>
+                <Flex alignItems="center">
+                  <TransactionSign isCredit />
+                  <Span color="black.500" fontSize="15px">
+                    <FormattedMoneyAmount
+                      currency={order.amount.currency}
+                      precision={2}
+                      amount={
+                        showPlatformTip
+                          ? order.amount.valueInCents
+                          : order.amount.valueInCents - (order.platformContributionAmount?.valueInCents || 0)
+                      }
+                    />
+                  </Span>
+                </Flex>
+                {showPlatformTip && order.platformContributionAmount?.valueInCents && (
+                  <Container fontSize="10px" color="black.500">
+                    <FormattedMessage
+                      id="OrderBudgetItem.Tip"
+                      defaultMessage="(includes {amount} platform tip)"
+                      values={{
+                        amount: (
+                          <FormattedMoneyAmount
+                            amount={order.platformContributionAmount.valueInCents}
+                            currency={order.platformContributionAmount.currency}
+                            precision={2}
+                            amountStyles={null}
+                          />
+                        ),
+                      }}
+                    />
+                  </Container>
+                )}
+              </Flex>
+            )}
+          </Flex>
+          {isLoading ? (
+            <LoadingPlaceholder height={20} width={140} mt={2} />
+          ) : (
+            <Flex mt={2}>
+              <StyledTag variant="rounded-left" fontSize="10px" fontWeight="500" mr={1}>
+                <FormattedMessage id="Order" defaultMessage="Order" /> #{order.legacyId}
+              </StyledTag>
+              <OrderStatusTag status={order.status} />
+            </Flex>
           )}
         </Flex>
       </Flex>
-      <Container borderTop={['1px solid #E8E9EB', 'none']} mt={3} pt={[2, 0]}>
-        <StyledButton
-          data-cy="transaction-details"
-          buttonSize="tiny"
-          buttonStyle="secondary"
-          isBorderless
-          onClick={() => setExpanded(!isExpanded)}
-          ml={-14}
-        >
-          <Span whiteSpace="nowrap">
-            {isExpanded ? (
-              <React.Fragment>
-                <FormattedMessage id="closeDetails" defaultMessage="Close Details" />
-                &nbsp;
-                <ChevronUp size="1em" />
-              </React.Fragment>
-            ) : (
-              <React.Fragment>
-                <Span whiteSpace="nowrap">
-                  <FormattedMessage id="viewDetails" defaultMessage="View Details" />
-                  &nbsp;
-                  <ChevronDown size="1em" />
+      <Flex flexWrap="wrap" justifyContent="space-between" alignItems="center" mt={2}>
+        <Box>
+          <Flex>
+            <Flex flexDirection="column" justifyContent="flex-end" mr={[3, 4]} minHeight={50}>
+              <DetailColumnHeader>
+                <FormattedMessage id="paymentmethod.label" defaultMessage="Payment Method" />
+              </DetailColumnHeader>
+              {isLoading ? (
+                <LoadingPlaceholder height={16} />
+              ) : (
+                <Span fontSize="11px" lineHeight="16px" color="black.700">
+                  {i18nPaymentMethodProviderType(
+                    intl,
+                    order.paymentMethod?.providerType || GQLV2_PAYMENT_METHOD_TYPES.BANK_TRANSFER,
+                  )}
                 </Span>
-              </React.Fragment>
-            )}
-          </Span>
-        </StyledButton>
-      </Container>
-    </Box>
+              )}
+            </Flex>
+          </Flex>
+        </Box>
+
+        {order?.permissions && (
+          <ButtonsContainer>
+            <ProcessOrderButtons order={order} permissions={order.permissions} />
+          </ButtonsContainer>
+        )}
+      </Flex>
+    </OrderContainer>
   );
 };
 
 OrderBudgetItem.propTypes = {
-  isInverted: PropTypes.bool.isRequired,
-  isExpanded: PropTypes.bool.isRequired,
-  setExpanded: PropTypes.func.isRequired,
-  fromCollective: PropTypes.shape({
-    id: PropTypes.number,
-    slug: PropTypes.string.isRequired,
-    name: PropTypes.string.isRequired,
-    imageUrl: PropTypes.string,
-    host: PropTypes.shape({
-      id: PropTypes.number,
-      slug: PropTypes.string.isRequired,
-      name: PropTypes.string,
-    }),
-  }).isRequired,
+  isLoading: PropTypes.bool,
+  /** Set this to true to invert who's displayed (payee or collective) */
+  isInverted: PropTypes.bool,
+  usePreviewModal: PropTypes.bool,
+  showAmountSign: PropTypes.bool,
+  onDelete: PropTypes.func,
+  onProcess: PropTypes.func,
+  showProcessActions: PropTypes.bool,
+  view: PropTypes.oneOf(['public', 'admin']),
   collective: PropTypes.shape({
-    id: PropTypes.number,
     slug: PropTypes.string.isRequired,
-    name: PropTypes.string.isRequired,
-    imageUrl: PropTypes.string,
-    host: PropTypes.shape({
-      id: PropTypes.number,
+    currency: PropTypes.string,
+    stats: PropTypes.shape({
+      balance: PropTypes.shape({
+        valueInCents: PropTypes.number,
+      }),
+    }),
+    parent: PropTypes.shape({
       slug: PropTypes.string.isRequired,
-      name: PropTypes.string,
     }),
   }),
+  host: PropTypes.object,
   order: PropTypes.shape({
-    id: PropTypes.number,
-    status: PropTypes.oneOf(Object.values(ORDER_STATUS)),
+    id: PropTypes.string,
+    legacyId: PropTypes.number,
+    description: PropTypes.string.isRequired,
+    status: PropTypes.oneOf(Object.values(ORDER_STATUS)).isRequired,
+    createdAt: PropTypes.string.isRequired,
+    amount: PropTypes.object.isRequired,
+    platformContributionAmount: PropTypes.object.isRequired,
+    permissions: PropTypes.shape({
+      canReject: PropTypes.bool,
+      canMarkAsPaid: PropTypes.bool,
+    }),
+    paymentMethod: PropTypes.shape({
+      providerType: PropTypes.string,
+    }),
+    /** If available, this `account` will be used in place of the `collective` */
+    toAccount: PropTypes.shape({
+      slug: PropTypes.string,
+    }),
+    fromAccount: PropTypes.shape({
+      slug: PropTypes.string,
+    }),
   }),
-  transaction: PropTypes.shape({
-    id: PropTypes.number,
-    uuid: PropTypes.string,
-    type: PropTypes.string,
-    currency: PropTypes.string,
-    description: PropTypes.string,
-    createdAt: PropTypes.string,
-    hostFeeInHostCurrency: PropTypes.number,
-    platformFeeInHostCurrency: PropTypes.number,
-    paymentProcessorFeeInHostCurrency: PropTypes.number,
-    taxAmount: PropTypes.number,
-    amount: PropTypes.number,
-    netAmountInCollectiveCurrency: PropTypes.number,
-    refundTransaction: PropTypes.object,
-    usingVirtualCardFromCollective: PropTypes.object,
-  }),
+  showPlatformTip: PropTypes.bool,
 };
 
 export default OrderBudgetItem;

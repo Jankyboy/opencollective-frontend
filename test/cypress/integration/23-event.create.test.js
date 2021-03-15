@@ -37,32 +37,32 @@ describe('event.create.test.js', () => {
     cy.get('[data-cy=Tickets] [data-cy=contribute-card-tier] [data-cy=amount]').contains(15);
     cy.disableSmoothScroll();
     cy.get('#top').scrollIntoView();
-    cy.getByDataCy('edit-collective-btn').click();
+    cy.get('[data-cy="edit-collective-btn"]:visible').click();
     // edit event info
     cy.get('.inputs .inputField.name input').type(`{selectall}${updatedTitle}`);
-    cy.get('.actions > .btn').click();
-    cy.get('.actions > .btn').contains('Saved');
+    cy.get('.actions > [data-cy="collective-save"]').click();
+    cy.get('.actions > [data-cy="collective-save"]').contains('Saved');
     // edit event tickets
     cy.getByDataCy('menu-item-tickets').click();
     cy.get('.EditTiers .tier:nth-child(2) .removeTier').click();
-    cy.get('.actions > .btn').click();
-    cy.get('.actions > .btn').contains('Saved');
+    cy.get('.actions > [data-cy="collective-save"]').click();
+    cy.get('.actions > [data-cy="collective-save"]').contains('Saved');
     // edit event tiers
     cy.getByDataCy('menu-item-tiers').click();
     cy.get('.addTier').click();
     cy.get('.EditTiers .tier .inputField.name input').type('Sponsor');
     cy.get('.EditTiers .tier .inputField.description textarea').type('Become a sponsor');
     cy.get('.EditTiers .tier .inputField.amount input').type(200);
-    cy.get('.actions > .btn').click();
-    cy.get('.actions > .btn').contains('Saved');
+    cy.get('.actions > [data-cy="collective-save"]').click();
+    cy.get('.actions > [data-cy="collective-save"]').contains('Saved');
     // verify update
-    cy.get('h1 a').click();
+    cy.contains('a', 'view event page').click();
     cy.get('[data-cy=Tickets] [data-cy=contribute-card-tier]').should('have.length', 1);
     cy.wait(100);
     cy.get('[data-cy="financial-contributions"] [data-cy=contribute-card-tier]').should('have.length', 1);
     cy.get('h1[data-cy=collective-title]').contains(updatedTitle);
     // delete event tiers
-    cy.getByDataCy('edit-collective-btn').click();
+    cy.get('[data-cy="edit-collective-btn"]:visible').click();
     cy.getByDataCy('menu-item-advanced').click();
     cy.contains('button', 'Delete this Event').click();
     cy.get('[data-cy=delete]').click();

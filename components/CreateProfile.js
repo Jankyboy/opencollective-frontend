@@ -3,10 +3,9 @@ import PropTypes from 'prop-types';
 import { compact, isEmpty, pick, values } from 'lodash';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { Link } from '../server/pages';
-
 import Container from './Container';
 import { Box, Flex } from './Grid';
+import Link from './Link';
 import StyledButton from './StyledButton';
 import StyledCard from './StyledCard';
 import StyledCheckbox from './StyledCheckbox';
@@ -39,7 +38,8 @@ const messages = defineMessages({
   },
   profileNameError: {
     id: 'CreateProfile.name.conflict',
-    defaultMessage: "You can't use the same name for your Personal profile and your Organization.",
+    defaultMessage:
+      "You can't use the same name for your Personal and Organization profiles. Personal profiles represent individual people, who can be administrators of Organization profiles.",
   },
 });
 
@@ -68,7 +68,7 @@ Tab.propTypes = {
 
 const SecondaryAction = ({ children, loading, onSecondaryAction }) => {
   return typeof onSecondaryAction === 'string' ? (
-    <Link route={onSecondaryAction} passHref>
+    <Link href={onSecondaryAction}>
       <StyledLink disabled={loading} fontSize="14px">
         {children}
       </StyledLink>
@@ -83,7 +83,7 @@ const SecondaryAction = ({ children, loading, onSecondaryAction }) => {
 SecondaryAction.propTypes = {
   children: PropTypes.node,
   loading: PropTypes.bool,
-  onSecondaryAction: PropTypes.func,
+  onSecondaryAction: PropTypes.oneOfType([PropTypes.func, PropTypes.string]),
 };
 
 const NewsletterCheckBox = ({ onChange, checked }) => {
@@ -150,6 +150,11 @@ const useForm = ({ onEmailChange, errors, formatMessage }) => {
   };
 };
 
+const DEFAULT_LABELS = {
+  personal: <FormattedMessage id="contribution.createPersoProfile" defaultMessage="Create Personal Profile" />,
+  organization: <FormattedMessage id="contribution.createOrgProfile" defaultMessage="Create Organization Profile" />,
+};
+
 const CreateProfile = ({
   email,
   submitting,
@@ -158,31 +163,26 @@ const CreateProfile = ({
   onPersonalSubmit,
   onOrgSubmit,
   onSecondaryAction,
-  createPersonalProfileLabel,
-  createOrganizationProfileLabel,
+  labels,
+  tabs,
   ...props
 }) => {
   const { formatMessage } = useIntl();
-  const [tab, setTab] = useState('personal');
+  const [activeTab, setActiveTab] = useState(tabs[0]);
   const { getFieldError, getFieldProps, state } = useForm({ onEmailChange, errors, formatMessage });
   const isValid = isEmpty(compact(values(state.errors)));
 
   return (
     <StyledCard width={1} maxWidth={480} {...props}>
       <Flex>
-        <Tab active={tab === 'personal'} setActive={() => setTab('personal')}>
-          {createPersonalProfileLabel || (
-            <FormattedMessage id="contribution.createPersoProfile" defaultMessage="Create Personal Profile" />
-          )}
-        </Tab>
-        <Tab active={tab === 'organization'} setActive={() => setTab('organization')}>
-          {createOrganizationProfileLabel || (
-            <FormattedMessage id="contribution.createOrgProfile" defaultMessage="Create Organization Profile" />
-          )}
-        </Tab>
+        {tabs.map(tab => (
+          <Tab key={tab} active={activeTab === tab} setActive={() => setActiveTab(tab)}>
+            {labels?.[tab] || DEFAULT_LABELS[tab]}
+          </Tab>
+        ))}
       </Flex>
 
-      {tab === 'personal' && (
+      {activeTab === 'personal' && (
         <Box
           as="form"
           p={4}
@@ -201,7 +201,7 @@ const CreateProfile = ({
               required
             >
               {inputProps => (
-                <StyledInput {...inputProps} {...getFieldProps(inputProps.name)} placeholder="i.e John Doe" />
+                <StyledInput {...inputProps} {...getFieldProps(inputProps.name)} placeholder="e.g. John Doe" />
               )}
             </StyledInputField>
           </Box>
@@ -213,7 +213,7 @@ const CreateProfile = ({
                   {...inputProps}
                   {...getFieldProps(inputProps.name)}
                   type="email"
-                  placeholder="i.e. yourname@yourhost.com"
+                  placeholder="e.g. yourname@yourhost.com"
                   value={email}
                   onKeyDown={e => {
                     // See https://github.com/facebook/react/issues/6368
@@ -244,7 +244,7 @@ const CreateProfile = ({
         </Box>
       )}
 
-      {tab === 'organization' && (
+      {activeTab === 'organization' && (
         <Box
           as="form"
           p={4}
@@ -273,7 +273,7 @@ const CreateProfile = ({
               required
             >
               {inputProps => (
-                <StyledInput {...inputProps} {...getFieldProps(inputProps.name)} placeholder="i.e John Doe" />
+                <StyledInput {...inputProps} {...getFieldProps(inputProps.name)} placeholder="e.g. John Doe" />
               )}
             </StyledInputField>
           </Box>
@@ -285,7 +285,7 @@ const CreateProfile = ({
                   {...getFieldProps(inputProps.name)}
                   type="email"
                   value={email}
-                  placeholder="i.e. yourname@yourhost.com"
+                  placeholder="e.g. yourname@yourhost.com"
                   onKeyDown={e => {
                     // See https://github.com/facebook/react/issues/6368
                     if (e.key === ' ') {
@@ -299,7 +299,7 @@ const CreateProfile = ({
           </Box>
 
           <P fontSize="16px" lineHeight="24px" color="black.900" mb={24} fontWeight="600">
-            <FormattedMessage id="CreateProfile.OrgInfo" defaultMessage="Organization's information" />
+            <FormattedMessage id="CreateProfile.OrgInfo" defaultMessage="Organization info" />
           </P>
           <Box mb={24}>
             <StyledInputField
@@ -311,7 +311,7 @@ const CreateProfile = ({
                 <StyledInput
                   {...inputProps}
                   {...getFieldProps(inputProps.name)}
-                  placeholder="i.e. AirBnb, Women Who Code"
+                  placeholder="e.g. AirBnb, Women Who Code"
                   required
                 />
               )}
@@ -398,7 +398,7 @@ const CreateProfile = ({
 };
 
 CreateProfile.propTypes = {
-  /** a map of errors to the matching field name, i.e. `{ email: 'Invalid email' }` will display that message until the email field */
+  /** a map of errors to the matching field name, e.g. `{ email: 'Invalid email' }` will display that message until the email field */
   errors: PropTypes.objectOf(PropTypes.string),
   /** handles submissions of personal profile form */
   onPersonalSubmit: PropTypes.func.isRequired,
@@ -412,10 +412,10 @@ CreateProfile.propTypes = {
   email: PropTypes.string.isRequired,
   /** handles changes in the email input */
   onEmailChange: PropTypes.func.isRequired,
-  /** A label to use instead of the default `Create personal profile` */
-  createPersonalProfileLabel: PropTypes.node,
-  /** A label to use instead of the default `Create Organization profile` */
-  createOrganizationProfileLabel: PropTypes.node,
+  /** To customize which forms should be displayed */
+  tabs: PropTypes.arrayOf(PropTypes.oneOf(['personal', 'organization'])).isRequired,
+  /** To replace the default labels */
+  labels: PropTypes.shape({ personal: PropTypes.string, organization: PropTypes.string }),
   /** All props from `StyledCard` */
   ...StyledCard.propTypes,
 };
@@ -423,6 +423,7 @@ CreateProfile.propTypes = {
 CreateProfile.defaultProps = {
   errors: {},
   submitting: false,
+  tabs: ['personal', 'organization'],
 };
 
 export default CreateProfile;

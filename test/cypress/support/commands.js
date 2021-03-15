@@ -30,6 +30,11 @@ Cypress.Commands.add('login', (params = {}) => {
   });
 });
 
+Cypress.Commands.add('logout', () => {
+  cy.getByDataCy('user-menu-trigger').click();
+  cy.getByDataCy('logout').click();
+});
+
 /**
  * Create a new account an SignIn. If no email is provided in `params`, the account
  * will be generated using a random email.
@@ -145,33 +150,33 @@ Cypress.Commands.add('createCollective', ({ type = 'ORGANIZATION', email = defau
 /**
  * Create a expense.
  */
-Cypress.Commands.add('createExpense', ({ userEmail = defaultTestUserEmail, ...params } = {}) => {
+Cypress.Commands.add('createExpense', ({ userEmail = defaultTestUserEmail, account, ...params } = {}) => {
   const expense = {
-    category: 'Engineering',
+    tags: ['Engineering'],
     type: 'INVOICE',
-    payoutMethod: 'paypal',
+    payoutMethod: { type: 'PAYPAL', data: { email: userEmail || randomEmail() } },
     description: 'Expense 1',
-    amount: 10000,
-    attachment: 'https://d.pr/free/i/OlQVIb+',
-    currency: 'USD',
+    items: [{ description: 'Some stuff', amount: 1000 }],
     ...params,
   };
 
   return signinRequestAndReturnToken({ email: userEmail }, null).then(token => {
-    return graphqlQuery(token, {
+    return graphqlQueryV2(token, {
       operationName: 'createExpense',
       query: `
-          mutation createExpense($expense: ExpenseInputType!) {
-            createExpense(expense: $expense) {
+          mutation createExpense($expense: ExpenseCreateInput!, $account: AccountReferenceInput!) {
+            createExpense(expense: $expense, account: $account) {
               id
-              collective {
+              legacyId
+              account {
                 id
                 slug
               }
             }
           }
         `,
-      variables: { expense },
+      variables: { expense, account },
+      failOnStatusCode: false,
     }).then(({ body }) => {
       return body.data.createExpense;
     });
@@ -300,12 +305,9 @@ Cypress.Commands.add('checkStepsProgress', ({ enabled = [], disabled = [] }) => 
 /**
  * Check if user is logged in by searching for its username in navbar
  */
-Cypress.Commands.add('assertLoggedIn', (username, timeout) => {
+Cypress.Commands.add('assertLoggedIn', params => {
   cy.log('Ensure user is logged in');
-  const loginSection = cy.get('.LoginTopBarProfileButton-name', { timeout });
-  if (username) {
-    loginSection.should('contain', username);
-  }
+  cy.getByDataCy('topbar-login-username', params);
 });
 
 /**
@@ -398,16 +400,19 @@ Cypress.Commands.add('enableTwoFactorAuth', ({ userEmail = defaultTestUserEmail,
         const token = secret;
 
         return graphqlV2Query(authToken, {
-          operationName: 'AddTwoFactorAuthToAccount',
+          operationName: 'AddTwoFactorAuthToIndividual',
           query: `
-            mutation AddTwoFactorAuthToAccount($account: AccountReferenceInput!, $token: String!) {
-              addTwoFactorAuthTokenToIndividual(account: $account, token: $token) {
+          mutation AddTwoFactorAuthToIndividual($account: AccountReferenceInput!, $token: String!) {
+            addTwoFactorAuthTokenToIndividual(account: $account, token: $token) {
+              account {
                 id
                 ... on Individual {
                   hasTwoFactorAuth
                 }
               }
+              recoveryCodes
             }
+          }
         `,
           variables: { account, token },
           options: { context: API_V2_CONTEXT },
@@ -416,6 +421,26 @@ Cypress.Commands.add('enableTwoFactorAuth', ({ userEmail = defaultTestUserEmail,
       .then(({ body }) => {
         return body.data;
       });
+  });
+});
+
+let localStorageSnapshot = {};
+
+Cypress.Commands.add('resetLocalStorage', () => {
+  localStorageSnapshot = {};
+  localStorage.clear();
+});
+
+Cypress.Commands.add('saveLocalStorage', () => {
+  localStorageSnapshot = {};
+  Object.keys(localStorage).forEach(key => {
+    localStorageSnapshot[key] = localStorage[key];
+  });
+});
+
+Cypress.Commands.add('restoreLocalStorage', () => {
+  Object.keys(localStorageSnapshot).forEach(key => {
+    localStorage.setItem(key, localStorageSnapshot[key]);
   });
 });
 
@@ -451,6 +476,19 @@ function signinRequestAndReturnToken(user, redirect) {
 function graphqlQuery(token, body) {
   return cy.request({
     url: '/api/graphql',
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+function graphqlQueryV2(token, body) {
+  return cy.request({
+    url: '/api/graphql/v2',
     method: 'POST',
     headers: {
       Accept: 'application/json',

@@ -4,9 +4,11 @@ import { FormattedMessage, injectIntl } from 'react-intl';
 
 import hasFeature, { FEATURES } from '../../../lib/allowed-features';
 
-import { H3, H4, P } from '../../Text';
+import { P } from '../../Text';
+import SettingsTitle from '../SettingsTitle';
 
 import ConnectedAccounts from './ConnectedAccounts';
+import SettingsSectionTitle from './SettingsSectionTitle';
 
 class SendingMoney extends React.Component {
   static propTypes = {
@@ -18,12 +20,15 @@ class SendingMoney extends React.Component {
     if (hasFeature(this.props.collective, FEATURES.PAYPAL_PAYOUTS)) {
       services.push('paypal');
     }
+    if (hasFeature(this.props.collective, FEATURES.PRIVACY_VCC)) {
+      services.push('privacy');
+    }
 
     return (
       <Fragment>
-        <H3>
+        <SettingsTitle mb={4}>
           <FormattedMessage id="editCollective.sendingMoney" defaultMessage={'Sending Money'} />
-        </H3>
+        </SettingsTitle>
         <ConnectedAccounts
           collective={this.props.collective}
           connectedAccounts={this.props.collective.connectedAccounts}
@@ -31,13 +36,13 @@ class SendingMoney extends React.Component {
         />
         {!services.includes('paypal') && (
           <Fragment>
-            <H4 mt={2}>
+            <SettingsSectionTitle>
               <FormattedMessage id="PayoutMethod.Type.Paypal" defaultMessage={'PayPal'} />
-            </H4>
+            </SettingsSectionTitle>
             <P>
               <FormattedMessage
                 id="collective.sendMoney.description"
-                defaultMessage={"PayPal is activated by default, you don't have to configure anything."}
+                defaultMessage={"PayPal is active by default. You don't have to configure anything."}
               />
             </P>
           </Fragment>

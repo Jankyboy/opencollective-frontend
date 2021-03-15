@@ -1,5 +1,7 @@
 import { gql } from '@apollo/client';
 
+import { MAX_CONTRIBUTORS_PER_CONTRIBUTE_CARD } from '../../contribute-cards/Contribute';
+
 import * as fragments from './fragments';
 
 export const collectivePageQuery = gql`
@@ -27,21 +29,32 @@ export const collectivePageQuery = gql`
       isArchived
       isHost
       isIncognito
+      isGuest
       hostFeePercent
+      platformFeePercent
       image
       imageUrl(height: 256)
       canApply
       canContact
+      features {
+        ...NavbarFields
+      }
       ordersFromCollective(subscriptionsOnly: true) {
         isSubscriptionActive
+      }
+      memberOf(onlyActiveCollectives: true, limit: 1) {
+        id
       }
       stats {
         id
         balance
+        balanceWithBlockedFunds
         yearlyBudget
         updates
         activeRecurringContributions
         totalAmountReceived(periodInMonths: 12)
+        totalAmountRaised: totalAmountReceived
+        totalNetAmountRaised: totalNetAmountReceived
         backers {
           id
           all
@@ -69,6 +82,9 @@ export const collectivePageQuery = gql`
         backgroundImageUrl
         twitterHandle
         type
+        coreContributors: contributors(roles: [ADMIN, MEMBER]) {
+          ...ContributorsFields
+        }
       }
       host {
         id
@@ -76,6 +92,13 @@ export const collectivePageQuery = gql`
         slug
         type
         settings
+        plan {
+          id
+          hostFees
+          transferwisePayoutsLimit
+          transferwisePayouts
+          hostFeeSharePercent
+        }
       }
       coreContributors: contributors(roles: [ADMIN, MEMBER]) {
         ...ContributorsFields
@@ -88,7 +111,7 @@ export const collectivePageQuery = gql`
         name
         slug
         description
-        hasLongDescription
+        useStandalonePage
         goal
         interval
         currency
@@ -117,6 +140,7 @@ export const collectivePageQuery = gql`
           collectiveSlug
           name
           type
+          isGuest
         }
       }
       events(includePastEvents: true, includeInactive: true) {
@@ -135,6 +159,7 @@ export const collectivePageQuery = gql`
           collectiveSlug
           name
           type
+          isGuest
         }
         stats {
           id
@@ -202,7 +227,7 @@ export const collectivePageQuery = gql`
         ...UpdatesFields
       }
       plan {
-        hostDashboard
+        id
         hostedCollectives
         hostedCollectivesLimit
       }
@@ -249,4 +274,12 @@ export const collectivePageQuery = gql`
 
   ${fragments.updatesFieldsFragment}
   ${fragments.contributorsFieldsFragment}
+  ${fragments.collectiveNavbarFieldsFragment}
 `;
+
+export const getCollectivePageQueryVariables = slug => {
+  return {
+    slug: slug,
+    nbContributorsPerContributeCard: MAX_CONTRIBUTORS_PER_CONTRIBUTE_CARD,
+  };
+};

@@ -3,6 +3,8 @@ import PropTypes from 'prop-types';
 import { defineMessages, FormattedMessage, injectIntl } from 'react-intl';
 import styled from 'styled-components';
 
+import { formatManualInstructions } from '../../lib/payment-method-utils';
+
 import Container from '../Container';
 import { Box, Flex } from '../Grid';
 import StyledTextarea from '../StyledTextarea';
@@ -59,19 +61,12 @@ class UpdateBankDetailsForm extends React.Component {
       amount: '$30',
       collective: 'acme',
     };
-    return this.state.form.instructions.replace(/{([\s\S]+?)}/g, (match, p1) => {
-      if (p1) {
-        const key = p1.toLowerCase();
-        if (formatValues[key] !== undefined) {
-          return formatValues[key];
-        }
-      }
-      return match;
-    });
+
+    return formatManualInstructions(this.state.form.instructions, formatValues);
   }
 
   render() {
-    const { intl, value, error, useStructuredForm } = this.props;
+    const { intl, value, error, useStructuredForm, bankAccount } = this.props;
     return (
       <Flex flexDirection="column">
         <Container as="fieldset" border="none" width={1}>
@@ -90,36 +85,39 @@ class UpdateBankDetailsForm extends React.Component {
               <P>
                 <FormattedMessage
                   id="bankaccount.instructions.variables"
-                  defaultMessage="You can use the following variables in the instructions:"
+                  defaultMessage="This is the email that payers will automatically receive when they make a bank transfer contribution. Include the details they need to complete their payment, including reference info so you can match the pending transaction. A variable is like a blank that gets filled in automatically. You can use the following variables in the instructions:"
                 />
               </P>
 
               <List>
-                {useStructuredForm && (
+                {useStructuredForm && bankAccount?.currency && (
                   <li>
                     <code>&#123;account&#125;</code>:{' '}
                     <FormattedMessage
                       id="bankaccount.instructions.account"
-                      defaultMessage="bank account details added above"
+                      defaultMessage="The bank account details you added above."
                     />
                   </li>
                 )}
                 <li>
                   <code>&#123;amount&#125;</code>:{' '}
-                  <FormattedMessage id="bankaccount.instructions.amount" defaultMessage="total amount of the order" />
+                  <FormattedMessage
+                    id="bankaccount.instructions.amount"
+                    defaultMessage="Total amount the payer should transfer."
+                  />
                 </li>
                 <li>
                   <code>&#123;collective&#125;</code>:{' '}
                   <FormattedMessage
                     id="bankaccount.instructions.collective"
-                    defaultMessage="slug of the collective receiving the order"
+                    defaultMessage="Collective to receive the funds. If you only have one Collective, you might not need to include this."
                   />
                 </li>
                 <li>
                   <code>&#123;reference&#125;</code>:{' '}
                   <FormattedMessage
                     id="bankaccount.instructions.reference"
-                    defaultMessage="unique id to track when the order is received"
+                    defaultMessage="Unique ID code, to confirm receipt of funds."
                   />
                 </li>
 

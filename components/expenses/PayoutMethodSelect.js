@@ -6,7 +6,7 @@ import { get, groupBy, truncate } from 'lodash';
 import memoizeOne from 'memoize-one';
 import { defineMessages, FormattedMessage, injectIntl } from 'react-intl';
 
-import { CollectiveFamilyTypes } from '../../lib/constants/collectives';
+import { AccountTypesWithHost } from '../../lib/constants/collectives';
 import { PayoutMethodType } from '../../lib/constants/payout-method';
 import { API_V2_CONTEXT, gqlV2 } from '../../lib/graphql/helpers';
 import i18nPayoutMethodType from '../../lib/i18n/payout-method-type';
@@ -80,10 +80,12 @@ class PayoutMethodSelect extends React.Component {
       host: PropTypes.shape({
         id: PropTypes.string,
         connectedAccounts: PropTypes.arrayOf(PropTypes.shape({ service: PropTypes.string })),
+        supportedPayoutMethods: PropTypes.array,
       }),
     }).isRequired,
     /** The Acccount being paid with the expense */
     payee: PropTypes.shape({
+      id: PropTypes.string,
       type: PropTypes.string,
       host: PropTypes.shape({
         id: PropTypes.string,
@@ -193,28 +195,31 @@ class PayoutMethodSelect extends React.Component {
     title: this.getPayoutMethodTitle(pm),
   });
 
-  getOptions = memoizeOne(payoutMethods => {
+  getOptions = memoizeOne((payoutMethods, payee) => {
+    const hostSupportedPayoutMethods = this.props.collective.host?.supportedPayoutMethods || [PayoutMethodType.OTHER];
     const groupedPms = groupBy(payoutMethods, 'type');
+    const payeeIsSelfHosted = payee && payee.id == payee.host?.id;
     const payeeIsCollectiveFamilyType =
-      this.props.payee &&
-      CollectiveFamilyTypes.includes(this.props.payee.type) &&
-      this.props.collective.host?.supportedPayoutMethods?.includes(PayoutMethodType.ACCOUNT_BALANCE);
+      payee &&
+      AccountTypesWithHost.includes(payee.type) &&
+      hostSupportedPayoutMethods.includes(PayoutMethodType.ACCOUNT_BALANCE);
 
     // If the Account is of the "Collective" family, account balance should be the only option
-    const pmTypes = payeeIsCollectiveFamilyType
-      ? [PayoutMethodType.ACCOUNT_BALANCE]
-      : Object.values(PayoutMethodType).filter(type => {
-          // Account Balance only on Same Host
-          if (
-            type === PayoutMethodType.ACCOUNT_BALANCE &&
-            this.props.collective.host?.supportedPayoutMethods?.includes(PayoutMethodType.ACCOUNT_BALANCE) &&
-            this.props.payee?.host?.id != this.props.collective.host?.id
-          ) {
-            return false;
-          } else {
-            return this.props.collective.host?.supportedPayoutMethods?.includes(type);
-          }
-        });
+    const pmTypes =
+      payeeIsCollectiveFamilyType && !payeeIsSelfHosted
+        ? [PayoutMethodType.ACCOUNT_BALANCE]
+        : Object.values(PayoutMethodType).filter(type => {
+            // Account Balance only on Same Host
+            if (
+              type === PayoutMethodType.ACCOUNT_BALANCE &&
+              hostSupportedPayoutMethods.includes(PayoutMethodType.ACCOUNT_BALANCE) &&
+              payee?.host?.id != this.props.collective.host?.id
+            ) {
+              return false;
+            } else {
+              return hostSupportedPayoutMethods.includes(type);
+            }
+          });
 
     return pmTypes.map(pmType => ({
       label: i18nPayoutMethodType(this.props.intl, pmType),
@@ -242,7 +247,7 @@ class PayoutMethodSelect extends React.Component {
         <StyledSelect
           data-cy="payout-method-select"
           {...props}
-          options={this.getOptions(payoutMethods)}
+          options={this.getOptions(payoutMethods, props.payee)}
           defaultValue={defaultPayoutMethod ? this.getOptionFromPayoutMethod(defaultPayoutMethod) : undefined}
           value={typeof value === 'undefined' ? undefined : value}
           formatOptionLabel={this.formatOptionLabel}
@@ -255,12 +260,7 @@ class PayoutMethodSelect extends React.Component {
             type="remove"
             onClose={() => this.setState({ removingPayoutMethod: null })}
             continueHandler={() => this.removePayoutMethod(removingPayoutMethod)}
-            header={
-              <FormattedMessage
-                id="PayoutMethod.RemoveWarning"
-                defaultMessage="Do you want to remove this payout method?"
-              />
-            }
+            header={<FormattedMessage id="PayoutMethod.RemoveWarning" defaultMessage="Remove this payout method?" />}
           >
             <Box mb={2}>
               <PayoutMethodTypeWithIcon type={removingPayoutMethod.type} />

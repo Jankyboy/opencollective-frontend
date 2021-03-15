@@ -14,6 +14,7 @@ import { compose } from '../lib/utils';
 
 import Container from '../components/Container';
 import ErrorPage from '../components/ErrorPage';
+import HappyBackground from '../components/gift-cards/HappyBackground';
 import { Box, Flex } from '../components/Grid';
 import Link from '../components/Link';
 import Loading from '../components/Loading';
@@ -24,7 +25,6 @@ import { withStripeLoader } from '../components/StripeProvider';
 import StyledButton from '../components/StyledButton';
 import { H1, H5 } from '../components/Text';
 import { withUser } from '../components/UserProvider';
-import HappyBackground from '../components/virtual-cards/HappyBackground';
 
 const ShadowBox = styled(Box)`
   box-shadow: 0px 8px 16px rgba(20, 20, 20, 0.12);
@@ -45,7 +45,6 @@ const AlignedBullets = styled.ul`
 
 class UpdatePaymentPage extends React.Component {
   static getInitialProps({ query: { collectiveSlug, id } }) {
-    console.log(`Updating Payment Method: ${collectiveSlug} ${id}`);
     return { slug: collectiveSlug, id: Number(id) };
   }
 
@@ -289,7 +288,7 @@ class UpdatePaymentPage extends React.Component {
                       </StyledButton>
                     )}
                     {!showCreditCardForm && success && (
-                      <Link route={`/${this.props.slug}`}>
+                      <Link href={`/${this.props.slug}`}>
                         <StyledButton
                           buttonStyle="primary"
                           buttonSize="large"
@@ -300,7 +299,7 @@ class UpdatePaymentPage extends React.Component {
                         >
                           <FormattedMessage
                             id="updatePaymentMethod.form.updatePaymentMethodSuccess.btn"
-                            defaultMessage="Go to Collective page"
+                            defaultMessage="Go to profile page"
                           />
                         </StyledButton>
                       </Link>

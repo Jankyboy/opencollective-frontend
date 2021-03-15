@@ -4,16 +4,18 @@ import { gql } from '@apollo/client';
 import { graphql } from '@apollo/client/react/hoc';
 import { Field, Form, Formik } from 'formik';
 import { pick } from 'lodash';
+import { withRouter } from 'next/router';
 import { defineMessages, FormattedMessage, injectIntl } from 'react-intl';
+import { isEmail } from 'validator';
 
 import { checkUserExistence, signin } from '../lib/api';
 import { getWebsiteUrl } from '../lib/utils';
-import { Router } from '../server/pages';
 
 import CreateProfileFAQ from './faqs/CreateProfileFAQ';
 import CreateProfile from './CreateProfile';
 import { Box, Flex } from './Grid';
-import Link from './Link';
+import I18nFormatters, { I18nSupportLink } from './I18nFormatters';
+import Loading from './Loading';
 import MessageBoxGraphqlError from './MessageBoxGraphqlError';
 import SignIn from './SignIn';
 import StyledButton from './StyledButton';
@@ -23,9 +25,13 @@ import StyledInputField from './StyledInputField';
 import { H5, P } from './Text';
 
 const messages = defineMessages({
-  inputLabel: {
+  twoFactorAuthCodeInputLabel: {
     id: 'TwoFactorAuth.Setup.Form.InputLabel',
     defaultMessage: 'Please enter your 6-digit code without any dashes.',
+  },
+  recoveryCodeInputLabel: {
+    id: 'TwoFactorAuth.RecoveryCodes.Form.InputLabel',
+    defaultMessage: 'Please enter your alphanumeric recovery code.',
   },
 });
 
@@ -37,6 +43,10 @@ class SignInOrJoinFree extends React.Component {
   static propTypes = {
     /** Redirect URL */
     redirect: PropTypes.string,
+    /** To pre-fill the "email" field */
+    defaultEmail: PropTypes.string,
+    /** Provide this to automatically sign in the given email */
+    email: PropTypes.string,
     /** createUserQuery binding */
     createUser: PropTypes.func,
     /** Use this prop to use this as a controlled component */
@@ -48,10 +58,10 @@ class SignInOrJoinFree extends React.Component {
       signin: PropTypes.string,
       join: PropTypes.string,
     }),
-    /** A label to use instead of the default `Create personal profile` */
-    createPersonalProfileLabel: PropTypes.node,
-    /** A label to use instead of the default `Create Organization profile` */
-    createOrganizationProfileLabel: PropTypes.node,
+    /** To customize which forms should be displayed */
+    createProfileTabs: PropTypes.arrayOf(PropTypes.oneOf(['personal', 'organization'])),
+    /** To replace the default labels */
+    createProfileLabels: PropTypes.shape({ personal: PropTypes.string, organization: PropTypes.string }),
     /** To display a box shadow below the card */
     withShadow: PropTypes.bool,
     /** Label for signIn, defaults to "Sign in using your email address:" */
@@ -59,15 +69,28 @@ class SignInOrJoinFree extends React.Component {
     intl: PropTypes.object,
     enforceTwoFactorAuthForLoggedInUser: PropTypes.bool,
     submitTwoFactorAuthenticatorCode: PropTypes.func,
+    submitRecoveryCode: PropTypes.func,
+    router: PropTypes.object,
   };
 
-  state = {
-    form: this.props.defaultForm || 'signin',
-    error: null,
-    submitting: false,
-    unknownEmailError: false,
-    email: '',
-  };
+  constructor(props) {
+    super(props);
+    this.state = {
+      form: this.props.defaultForm || 'signin',
+      error: null,
+      submitting: false,
+      unknownEmailError: false,
+      email: props.email || props.defaultEmail || '',
+      useRecoveryCodes: null,
+    };
+  }
+
+  componentDidMount() {
+    // Auto signin if an email is provided
+    if (this.props.email && isEmail(this.props.email)) {
+      this.signIn(this.props.email);
+    }
+  }
 
   switchForm = form => {
     // Update local state
@@ -101,9 +124,9 @@ class SignInOrJoinFree extends React.Component {
         // In dev/test, API directly returns a redirect URL for emails like
         // test*@opencollective.com.
         if (response.redirect) {
-          await Router.replaceRoute(response.redirect);
+          await this.props.router.replace(response.redirect);
         } else {
-          await Router.pushRoute('signinLinkSent', { email });
+          await this.props.router.push({ pathname: '/signin/sent', query: { email } });
         }
         window.scrollTo(0, 0);
       } else {
@@ -138,7 +161,7 @@ class SignInOrJoinFree extends React.Component {
           websiteUrl: getWebsiteUrl(),
         },
       });
-      await Router.pushRoute('signinLinkSent', { email: user.email });
+      await this.props.router.push({ pathname: '/signin/sent', query: { email: user.email } });
       window.scrollTo(0, 0);
     } catch (error) {
       this.setState({ error: error.message, submitting: false });
@@ -146,32 +169,53 @@ class SignInOrJoinFree extends React.Component {
     }
   };
 
-  renderTwoFactorAuthBox = () => {
+  renderBoxes = useRecoveryCodes => {
+    const formKey = useRecoveryCodes ? 'recoveryCode' : 'twoFactorAuthenticatorCode';
+
     return (
       <StyledCard maxWidth={480} width={1} boxShadow={'0px 9px 14px 1px #dedede'}>
         <Box py={4} px={[3, 4]}>
-          <H5 as="label" fontWeight="bold" htmlFor="twoFactorAuthenticatorCode" mb={3} textAlign="left" display="block">
-            <FormattedMessage id="TwoFactorAuth.SignIn" defaultMessage="Please verify your login using the 2FA code:" />
+          <H5 as="label" fontWeight="bold" htmlFor={formKey} mb={3} textAlign="left" display="block">
+            {useRecoveryCodes ? (
+              <FormattedMessage
+                id="TwoFactorAuth.SignIn.RecoveryCodes"
+                defaultMessage="Please enter one of your 2FA recovery codes:"
+              />
+            ) : (
+              <FormattedMessage
+                id="TwoFactorAuth.SignIn"
+                defaultMessage="Please verify your login using the 2FA code:"
+              />
+            )}
           </H5>
           <Formik
             initialValues={{
               twoFactorAuthenticatorCode: '',
+              recoveryCode: '',
             }}
-            onSubmit={(values, actions) => {
-              this.props.submitTwoFactorAuthenticatorCode(values, actions);
+            onSubmit={values => {
+              const { twoFactorAuthenticatorCode, recoveryCode } = values;
+              if (recoveryCode) {
+                return this.props.submitRecoveryCode(recoveryCode);
+              } else {
+                return this.props.submitTwoFactorAuthenticatorCode(twoFactorAuthenticatorCode);
+              }
             }}
           >
             {formik => {
-              const { values, handleSubmit, errors, touched, isSubmitting } = formik;
+              const { values, handleSubmit, isSubmitting } = formik;
 
               return (
                 <Form>
                   <StyledInputField
-                    name="twoFactorAuthenticatorCode"
-                    htmlFor="twoFactorAuthenticatorCode"
-                    error={touched.twoFactorAuthenticatorCode && errors.twoFactorAuthenticatorCode}
-                    label={this.props.intl.formatMessage(messages.inputLabel)}
-                    value={values.twoFactorAuthenticatorCode}
+                    name={formKey}
+                    htmlFor={formKey}
+                    label={
+                      useRecoveryCodes
+                        ? this.props.intl.formatMessage(messages.recoveryCodeInputLabel)
+                        : this.props.intl.formatMessage(messages.twoFactorAuthCodeInputLabel)
+                    }
+                    value={values[formKey]}
                     required
                     mt={2}
                     mb={3}
@@ -183,11 +227,10 @@ class SignInOrJoinFree extends React.Component {
                         minWidth={300}
                         minHeight={75}
                         fontSize="20px"
-                        placeholder="123456"
-                        pattern="[0-9]{6}"
-                        inputMode="numeric"
+                        pattern={useRecoveryCodes ? '[a-zA-Z0-9]{16}' : '[0-9]{6}'}
+                        inputMode={useRecoveryCodes ? 'none' : 'numeric'}
                         autoFocus
-                        data-cy="signin-two-factor-auth-input"
+                        data-cy={useRecoveryCodes ? null : 'signin-two-factor-auth-input'}
                       />
                     )}
                   </StyledInputField>
@@ -199,34 +242,73 @@ class SignInOrJoinFree extends React.Component {
                       minHeight="36px"
                       buttonStyle="primary"
                       type="submit"
-                      onSubmit={handleSubmit}
-                      disabled={values.twoFactorAuthenticatorCode.length < 6}
                       loading={isSubmitting}
-                      data-cy="signin-two-factor-auth-button"
+                      onSubmit={handleSubmit}
+                      data-cy={useRecoveryCodes ? null : 'signin-two-factor-auth-button'}
                     >
-                      <FormattedMessage id="TwoFactorAuth.Setup.Form.VerifyButton" defaultMessage="Verify" />
+                      <FormattedMessage id="VerifyButton" defaultMessage="Verify" />
                     </StyledButton>
                   </Flex>
                 </Form>
               );
             }}
           </Formik>
+          <Box>
+            {useRecoveryCodes ? (
+              <P>
+                <FormattedMessage
+                  id="login.twoFactorAuth.support"
+                  defaultMessage="If you can't login with 2FA or recovery codes, please contact <SupportLink></SupportLink>."
+                  values={{
+                    SupportLink: I18nSupportLink,
+                  }}
+                />
+              </P>
+            ) : (
+              <Fragment>
+                <P fontWeight="bold" fontSize={14} mb={1} textAlign="left" display="block">
+                  <FormattedMessage id="login.twoFactorAuth.havingTrouble" defaultMessage="Having trouble?" />
+                </P>
+                <StyledButton
+                  type="button"
+                  buttonSize="tiny"
+                  isBorderless
+                  buttonStyle="secondary"
+                  mb={3}
+                  onClick={() => this.setState({ useRecoveryCodes: true })}
+                >
+                  <P>
+                    <FormattedMessage
+                      id="login.twoFactorAuth.useRecoveryCodes"
+                      defaultMessage="Use 2FA recovery codes."
+                    />
+                  </P>
+                </StyledButton>
+              </Fragment>
+            )}
+          </Box>
         </Box>
       </StyledCard>
     );
   };
 
   render() {
-    const { submitting, error, unknownEmailError, email } = this.state;
+    const { submitting, error, unknownEmailError, email, useRecoveryCodes } = this.state;
     const displayedForm = this.props.form || this.state.form;
     const routes = this.props.routes || {};
     const { enforceTwoFactorAuthForLoggedInUser } = this.props;
+
+    // No need to show the form if an email is provided
+    const hasError = Boolean(unknownEmailError || error);
+    if (this.props.email && !hasError) {
+      return <Loading />;
+    }
 
     return (
       <Flex flexDirection="column" width={1} alignItems="center">
         {error && <MessageBoxGraphqlError error={error} mb={[3, 4]} />}
         {enforceTwoFactorAuthForLoggedInUser ? (
-          this.renderTwoFactorAuthBox()
+          this.renderBoxes(useRecoveryCodes)
         ) : (
           <Fragment>
             {displayedForm !== 'create-account' ? (
@@ -252,17 +334,14 @@ class SignInOrJoinFree extends React.Component {
                       onOrgSubmit={this.createProfile}
                       onSecondaryAction={routes.signin || (() => this.switchForm('signin'))}
                       submitting={submitting}
-                      createPersonalProfileLabel={this.props.createPersonalProfileLabel}
-                      createOrganizationProfileLabel={this.props.createOrganizationProfileLabel}
+                      labels={this.props.createProfileLabels}
+                      tabs={this.props.createProfileTabs}
                     />
                     <P mt={4} color="black.500" fontSize="12px" mb={3} data-cy="join-conditions" textAlign="center">
                       <FormattedMessage
                         id="SignIn.legal"
-                        defaultMessage="By joining, you agree to our <tos-link>Terms of Service</tos-link> and <privacy-policy-link>Privacy Policy</privacy-policy-link>."
-                        values={{
-                          'tos-link': msg => <Link route="/tos">{msg}</Link>,
-                          'privacy-policy-link': msg => <Link route="/privacypolicy">{msg}</Link>,
-                        }}
+                        defaultMessage="By joining, you agree to our <TOSLink>Terms of Service</TOSLink> and <PrivacyPolicyLink>Privacy Policy</PrivacyPolicyLink>."
+                        values={I18nFormatters}
                       />
                     </P>
                   </Box>
@@ -296,4 +375,4 @@ const signupMutation = gql`
 
 export const addSignupMutation = graphql(signupMutation, { name: 'createUser' });
 
-export default injectIntl(addSignupMutation(SignInOrJoinFree));
+export default injectIntl(addSignupMutation(withRouter(SignInOrJoinFree)));

@@ -4,23 +4,20 @@ import { Palette } from '@styled-icons/boxicons-regular/Palette';
 import { Camera } from '@styled-icons/feather/Camera';
 import { Github } from '@styled-icons/feather/Github';
 import { Globe } from '@styled-icons/feather/Globe';
-import { Settings } from '@styled-icons/feather/Settings';
 import { Twitter } from '@styled-icons/feather/Twitter';
 import { get } from 'lodash';
 import dynamic from 'next/dynamic';
-import { defineMessages, FormattedMessage, injectIntl } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import styled from 'styled-components';
 
 import { getCollectiveMainTag } from '../../../lib/collective.lib';
 import { CollectiveType } from '../../../lib/constants/collectives';
 import { githubProfileUrl, twitterProfileUrl } from '../../../lib/url_helpers';
 
-import CollectiveCallsToAction from '../../CollectiveCallsToAction';
 import Container from '../../Container';
 import DefinedTerm, { Terms } from '../../DefinedTerm';
 import { Box, Flex } from '../../Grid';
 import I18nCollectiveTags from '../../I18nCollectiveTags';
-import Link from '../../Link';
 import LinkCollective from '../../LinkCollective';
 import LoadingPlaceholder from '../../LoadingPlaceholder';
 import MessageBox from '../../MessageBox';
@@ -78,7 +75,8 @@ const StyledShortDescription = styled.h2`
 /**
  * Collective's page Hero/Banner/Cover component.
  */
-const Hero = ({ collective, host, isAdmin, onPrimaryColorChange, callsToAction, intl }) => {
+const Hero = ({ collective, host, isAdmin, onPrimaryColorChange }) => {
+  const intl = useIntl();
   const [hasColorPicker, showColorPicker] = React.useState(false);
   const [isEditingCover, editCover] = React.useState(false);
   const [message, showMessage] = React.useState(null);
@@ -107,7 +105,7 @@ const Hero = ({ collective, host, isAdmin, onPrimaryColorChange, callsToAction, 
         </MessageBox>
       )}
       <Container position="relative" minHeight={325} zIndex={1000} data-cy="collective-hero">
-        {isEditing ? (
+        {isEditingCover ? (
           <HeroBackgroundEdit collective={collective} onEditCancel={() => editCover(false)} />
         ) : (
           <HeroBackground collective={collective} />
@@ -151,23 +149,6 @@ const Hero = ({ collective, host, isAdmin, onPrimaryColorChange, callsToAction, 
           <Container position="relative" mb={2} width={128}>
             <HeroAvatar collective={collective} isAdmin={isAdmin} handleHeroMessage={handleHeroMessage} />
           </Container>
-          {isAdmin && (
-            <Link
-              route={isEvent ? 'editEvent' : 'editCollective'}
-              params={
-                isEvent
-                  ? { parentCollectiveSlug: collective.parentCollective?.slug, eventSlug: collective.slug }
-                  : { slug: collective.slug }
-              }
-            >
-              <StyledButton buttonSize="tiny" minWidth={96} my={3} data-cy="edit-collective-btn">
-                <Settings size={14} />
-                <Span ml={1} css={{ verticalAlign: 'middle' }}>
-                  <FormattedMessage id="Settings" defaultMessage="Settings" />
-                </Span>
-              </StyledButton>
-            </Link>
-          )}
           <Box maxWidth={['70%', '60%', null, '40%', '45%']}>
             <H1
               color="black.800"
@@ -202,51 +183,42 @@ const Hero = ({ collective, host, isAdmin, onPrimaryColorChange, callsToAction, 
                   <StyledLink
                     data-cy="twitterProfileUrl"
                     href={twitterProfileUrl(collective.twitterHandle)}
-                    title="Twitter"
-                    aria-label="Twitter link"
                     openInNewTab
                   >
-                    <StyledRoundButton size={32} mr={3}>
+                    <StyledRoundButton size={32} mr={3} title="Twitter" aria-label="Twitter link">
                       <Twitter size={12} />
                     </StyledRoundButton>
                   </StyledLink>
                 )}
                 {collective.githubHandle && (
-                  <StyledLink
-                    data-cy="githubProfileUrl"
-                    href={githubProfileUrl(collective.githubHandle)}
-                    title="Github"
-                    openInNewTab
-                    aria-label="Github link"
-                  >
-                    <StyledRoundButton size={32} mr={3}>
+                  <StyledLink data-cy="githubProfileUrl" href={githubProfileUrl(collective.githubHandle)} openInNewTab>
+                    <StyledRoundButton size={32} mr={3} title="Github" aria-label="Github link">
                       <Github size={12} />
                     </StyledRoundButton>
                   </StyledLink>
                 )}
                 {collective.website && (
-                  <StyledLink
-                    data-cy="collectiveWebsite"
-                    href={collective.website}
-                    title={intl.formatMessage(Translations.website)}
-                    aria-label="Website link"
-                    openInNewTabNoFollow
-                  >
-                    <StyledRoundButton size={32} mr={3}>
+                  <StyledLink data-cy="collectiveWebsite" href={collective.website} openInNewTabNoFollow>
+                    <StyledRoundButton
+                      size={32}
+                      mr={3}
+                      title={intl.formatMessage(Translations.website)}
+                      aria-label="Website link"
+                    >
                       <Globe size={14} />
                     </StyledRoundButton>
                   </StyledLink>
                 )}
               </Flex>
               {collective.parentCollective && (
-                <Container mx={1} color="#969ba3" my="12px">
+                <Container mx={1} color="black.700" my="12px">
                   <FormattedMessage
                     id="Collective.Hero.ParentCollective"
                     defaultMessage="Part of: {parentName}"
                     values={{
                       parentName: (
                         <LinkCollective collective={collective.parentCollective}>
-                          <Span data-cy="parentCollectiveName" color="black.600">
+                          <Span data-cy="parentCollectiveName" color="black.700">
                             {collective.parentCollective.name}
                           </Span>
                         </LinkCollective>
@@ -255,17 +227,17 @@ const Hero = ({ collective, host, isAdmin, onPrimaryColorChange, callsToAction, 
                   />
                 </Container>
               )}
-              {host && collective.isApproved && !collective.isHost && (
+              {host && collective.isApproved && host.id !== collective.id && !collective.isHost && (
                 <Fragment>
-                  <Container mx={1} color="#969ba3" my={2}>
+                  <Container mx={1} color="black.700" my={2}>
                     <FormattedMessage
                       id="Collective.Hero.Host"
                       defaultMessage="{FiscalHost}: {hostName}"
                       values={{
-                        FiscalHost: <DefinedTerm term={Terms.FISCAL_HOST} />,
+                        FiscalHost: <DefinedTerm term={Terms.FISCAL_HOST} color="black.700" />,
                         hostName: (
                           <LinkCollective collective={host}>
-                            <Span data-cy="fiscalHostName" color="black.600">
+                            <Span data-cy="fiscalHostName" color="black.700">
                               {host.name}
                             </Span>
                           </LinkCollective>
@@ -274,14 +246,14 @@ const Hero = ({ collective, host, isAdmin, onPrimaryColorChange, callsToAction, 
                     />
                   </Container>
                   {collective.connectedTo.length !== 0 && (
-                    <Container mx={1} color="#969ba3" my="12px">
+                    <Container mx={1} color="black.700" my="12px">
                       <FormattedMessage
                         id="Collective.Hero.ParentCollective"
                         defaultMessage="Part of: {parentName}"
                         values={{
                           parentName: (
                             <LinkCollective collective={collective.connectedTo[0].collective}>
-                              <Span data-cy="parentCollectiveName" color="black.600">
+                              <Span data-cy="parentCollectiveName" color="black.700">
                                 {collective.connectedTo[0].collective.name}
                               </Span>
                             </LinkCollective>
@@ -308,7 +280,7 @@ const Hero = ({ collective, host, isAdmin, onPrimaryColorChange, callsToAction, 
                       <FormattedMessage id="host.tos" defaultMessage="Terms of fiscal sponsorship" />
                     </StyledLink>
                   )}
-                  <Container ml={2} mr={3} color="black.500" fontSize="12px">
+                  <Container ml={2} mr={3} color="black.700" fontSize="12px">
                     <FormattedMessage
                       id="Hero.HostFee"
                       defaultMessage="Host fee: {fee}"
@@ -321,6 +293,21 @@ const Hero = ({ collective, host, isAdmin, onPrimaryColorChange, callsToAction, 
                       }}
                     />
                   </Container>
+                  {collective.platformFeePercent > 0 && (
+                    <Container ml={2} mr={3} color="black.700" fontSize="12px">
+                      <FormattedMessage
+                        id="Hero.PlatformFee"
+                        defaultMessage="Platform fee: {fee}"
+                        values={{
+                          fee: (
+                            <DefinedTerm term={Terms.PLATFORM_FEE} color="black.700">
+                              {collective.platformFeePercent || 0}%
+                            </DefinedTerm>
+                          ),
+                        }}
+                      />
+                    </Container>
+                  )}
                 </Fragment>
               )}
             </Flex>
@@ -328,20 +315,9 @@ const Hero = ({ collective, host, isAdmin, onPrimaryColorChange, callsToAction, 
           <StyledShortDescription>{collective.description}</StyledShortDescription>
           {isEvent && <HeroEventDetails collective={collective} />}
 
-          {!isCollective && !isEvent && !collective.isHost && (
+          {!collective.isHost && [CollectiveType.USER, CollectiveType.ORGANIZATION].includes(collective.type) && (
             <HeroTotalCollectiveContributionsWithData collective={collective} />
           )}
-
-          {/** Calls to actions - only displayed on mobile because NavBar has its own instance on tablet+ */}
-          <CollectiveCallsToAction
-            display={['flex', null, 'none']}
-            flexWrap="wrap"
-            mt={3}
-            width="100%"
-            collective={collective}
-            callsToAction={callsToAction}
-            buttonsMinWidth={140}
-          />
         </ContainerSectionContent>
       </Container>
     </Fragment>
@@ -366,6 +342,7 @@ Hero.propTypes = {
     description: PropTypes.string,
     isHost: PropTypes.bool,
     hostFeePercent: PropTypes.number,
+    platformFeePercent: PropTypes.number,
     tags: PropTypes.arrayOf(PropTypes.string),
     settings: PropTypes.shape({
       tos: PropTypes.string,
@@ -396,14 +373,8 @@ Hero.propTypes = {
   /** Show the color picker input */
   onPrimaryColorChange: PropTypes.func.isRequired,
 
-  /** Defines which buttons get displayed. See `CollectiveCallsToAction` */
-  callsToAction: PropTypes.object,
-
   /** Define if we need to display special actions like the "Edit collective" button */
   isAdmin: PropTypes.bool,
-
-  /** @ignore */
-  intl: PropTypes.object,
 };
 
-export default React.memo(injectIntl(Hero));
+export default React.memo(Hero);

@@ -3,7 +3,7 @@ import PropTypes from 'prop-types';
 import { useMutation, useQuery } from '@apollo/client';
 import { Lock } from '@styled-icons/boxicons-regular/Lock';
 import themeGet from '@styled-system/theme-get';
-import { first, get, pick, uniqBy } from 'lodash';
+import { first, get, merge, pick, uniqBy } from 'lodash';
 import { withRouter } from 'next/router';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import styled from 'styled-components';
@@ -12,9 +12,10 @@ import { getErrorFromGraphqlException } from '../../lib/errors';
 import { API_V2_CONTEXT, gqlV2 } from '../../lib/graphql/helpers';
 import { getPaymentMethodName } from '../../lib/payment_method_label';
 import { getPaymentMethodIcon, getPaymentMethodMetadata } from '../../lib/payment-method-utils';
-import { stripeTokenToPaymentMethod } from '../../lib/stripe';
+import { getStripe, stripeTokenToPaymentMethod } from '../../lib/stripe';
 
 import { Box, Flex } from '../Grid';
+import I18nFormatters from '../I18nFormatters';
 import LoadingPlaceholder from '../LoadingPlaceholder';
 import NewCreditCardForm from '../NewCreditCardForm';
 import { withStripeLoader } from '../StripeProvider';
@@ -23,6 +24,7 @@ import StyledHr from '../StyledHr';
 import StyledRadioList from '../StyledRadioList';
 import StyledRoundButton from '../StyledRoundButton';
 import { P } from '../Text';
+import { TOAST_TYPE, useToasts } from '../ToastProvider';
 
 const PaymentMethodBox = styled(Flex)`
   border-top: 1px solid ${themeGet('colors.black.300')};
@@ -43,7 +45,7 @@ const paymentMethodsQuery = gqlV2/* GraphQL */ `
   query UpdatePaymentMethodPopUpPaymentMethod($slug: String) {
     account(slug: $slug) {
       id
-      paymentMethods(types: ["creditcard", "virtualcard", "prepaid"]) {
+      paymentMethods(types: ["creditcard", "giftcard", "prepaid"]) {
         id
         name
         data
@@ -73,27 +75,45 @@ const updatePaymentMethodMutation = gqlV2/* GraphQL */ `
   }
 `;
 
-const addPaymentMethodMutation = gqlV2/* GraphQL */ `
-  mutation AddPaymentMethod($paymentMethod: PaymentMethodCreateInput!, $account: AccountReferenceInput!) {
-    addStripeCreditCard(paymentMethod: $paymentMethod, account: $account) {
+const paymentMethodResponseFragment = gqlV2/* GraphQL */ `
+  fragment paymentMethodResponseFragment on CreditCardWithStripeError {
+    paymentMethod {
       id
-      name
+    }
+    stripeError {
+      message
+      response
     }
   }
 `;
 
+export const addCreditCardMutation = gqlV2/* GraphQL */ `
+  mutation AddCreditCardRecurringContributions(
+    $creditCardInfo: CreditCardCreateInput!
+    $name: String!
+    $account: AccountReferenceInput!
+  ) {
+    addCreditCard(creditCardInfo: $creditCardInfo, name: $name, account: $account) {
+      ...paymentMethodResponseFragment
+    }
+  }
+  ${paymentMethodResponseFragment}
+`;
+
+export const confirmCreditCardMutation = gqlV2/* GraphQL */ `
+  mutation ConfirmCreditCardRecurringContributions($paymentMethod: PaymentMethodReferenceInput!) {
+    confirmCreditCard(paymentMethod: $paymentMethod) {
+      ...paymentMethodResponseFragment
+    }
+  }
+  ${paymentMethodResponseFragment}
+`;
+
 const mutationOptions = { context: API_V2_CONTEXT };
 
-const UpdatePaymentMethodPopUp = ({
-  setMenuState,
-  contribution,
-  createNotification,
-  setShowPopup,
-  router,
-  loadStripe,
-  account,
-}) => {
+const UpdatePaymentMethodPopUp = ({ setMenuState, contribution, setShowPopup, router, loadStripe, account }) => {
   const intl = useIntl();
+  const { addToast } = useToasts();
 
   // state management
   const [showAddPaymentMethod, setShowAddPaymentMethod] = useState(false);
@@ -103,22 +123,77 @@ const UpdatePaymentMethodPopUp = ({
   const [stripe, setStripe] = useState(null);
   const [newPaymentMethodInfo, setNewPaymentMethodInfo] = useState(null);
   const [addedPaymentMethod, setAddedPaymentMethod] = useState(null);
+  const [addingPaymentMethod, setAddingPaymentMethod] = useState(false);
 
   // GraphQL mutations and queries
-  const { data } = useQuery(paymentMethodsQuery, {
+  const { data, refetch } = useQuery(paymentMethodsQuery, {
     variables: {
       slug: router.query.slug,
     },
     context: API_V2_CONTEXT,
+    fetchPolicy: 'network-only',
   });
   const [submitUpdatePaymentMethod, { loading: loadingUpdatePaymentMethod }] = useMutation(
     updatePaymentMethodMutation,
     mutationOptions,
   );
-  const [submitAddPaymentMethod, { loading: loadingAddPaymentMethod }] = useMutation(
-    addPaymentMethodMutation,
-    mutationOptions,
-  );
+  const [submitAddPaymentMethod] = useMutation(addCreditCardMutation, mutationOptions);
+  const [submitConfirmPaymentMethodMutation] = useMutation(confirmCreditCardMutation, mutationOptions);
+
+  const handleAddPaymentMethodResponse = async response => {
+    const { paymentMethod, stripeError } = response;
+    if (stripeError) {
+      return handleStripeError(paymentMethod, stripeError);
+    } else {
+      return handleSuccess(paymentMethod);
+    }
+  };
+
+  const handleStripeError = async (paymentMethod, stripeError) => {
+    const { message, response } = stripeError;
+
+    if (!response) {
+      addToast({
+        type: TOAST_TYPE.ERROR,
+        message: message,
+      });
+      setAddingPaymentMethod(false);
+      return false;
+    }
+
+    const stripe = await getStripe();
+    const result = await stripe.handleCardSetup(response.setupIntent.client_secret);
+    if (result.error) {
+      addToast({
+        type: TOAST_TYPE.ERROR,
+        message: result.error.message,
+      });
+      setAddingPaymentMethod(false);
+      return false;
+    } else {
+      try {
+        const response = await submitConfirmPaymentMethodMutation({
+          variables: { paymentMethod: { id: paymentMethod.id } },
+        });
+        return handleSuccess(response.data.confirmCreditCard.paymentMethod);
+      } catch (error) {
+        addToast({
+          type: TOAST_TYPE.ERROR,
+          message: error.message,
+        });
+        setAddingPaymentMethod(false);
+        return false;
+      }
+    }
+  };
+
+  const handleSuccess = paymentMethod => {
+    setAddingPaymentMethod(false);
+    refetch();
+    setAddedPaymentMethod(paymentMethod);
+    setShowAddPaymentMethod(false);
+    setLoadingSelectedPaymentMethod(true);
+  };
 
   // load stripe on mount
   useEffect(() => {
@@ -127,15 +202,14 @@ const UpdatePaymentMethodPopUp = ({
   }, [stripeIsReady]);
 
   // data handling
-  const minBalance = 50; // Minimum usable balance for virtual card
-
+  const minBalance = 50; // Minimum usable balance for gift card
   const paymentMethods = get(data, 'account.paymentMethods', null);
   const paymentOptions = React.useMemo(() => {
     if (!paymentMethods) {
       return null;
     }
     const paymentMethodsOptions = paymentMethods.map(pm => ({
-      key: `pm-${pm.id}`,
+      key: `${contribution.id}-pm-${pm.id}`,
       title: getPaymentMethodName(pm),
       subtitle: getPaymentMethodMetadata(pm),
       icon: getPaymentMethodIcon(pm),
@@ -202,7 +276,7 @@ const UpdatePaymentMethodPopUp = ({
       ) : (
         <StyledRadioList
           id="PaymentMethod"
-          name="PaymentMethod"
+          name={`${contribution.id}-PaymentMethod`}
           keyGetter="key"
           options={paymentOptions}
           onChange={setSelectedPaymentMethod}
@@ -257,41 +331,50 @@ const UpdatePaymentMethodPopUp = ({
               buttonStyle="secondary"
               disabled={newPaymentMethodInfo ? !newPaymentMethodInfo?.value.complete : true}
               type="submit"
-              loading={loadingAddPaymentMethod}
+              loading={addingPaymentMethod}
               data-cy="recurring-contribution-submit-pm-button"
               onClick={async () => {
+                setAddingPaymentMethod(true);
                 if (!stripe) {
-                  createNotification(
-                    'error',
-                    'There was a problem initializing the payment form. Please reload the page and try again',
-                  );
+                  addToast({
+                    type: TOAST_TYPE.ERROR,
+                    message: (
+                      <FormattedMessage
+                        id="Stripe.Initialization.Error"
+                        defaultMessage="There was a problem initializing the payment form. Please reload the page and try again."
+                      />
+                    ),
+                  });
+                  setAddingPaymentMethod(false);
                   return false;
                 }
                 const { token, error } = await stripe.createToken();
 
                 if (error) {
-                  createNotification('error', error.message);
+                  addToast({
+                    type: TOAST_TYPE.ERROR,
+                    message: error.message,
+                  });
                   return false;
                 }
                 const newStripePaymentMethod = stripeTokenToPaymentMethod(token);
-                const newPaymentMethod = pick(newStripePaymentMethod, ['name', 'token', 'data']);
+                const newCreditCardInfo = merge(newStripePaymentMethod.data, pick(newStripePaymentMethod, ['token']));
                 try {
                   const res = await submitAddPaymentMethod({
-                    variables: { paymentMethod: newPaymentMethod, account: { id: account.id } },
-                    refetchQueries: [
-                      {
-                        query: paymentMethodsQuery,
-                        variables: { slug: router.query.slug },
-                        context: API_V2_CONTEXT,
-                      },
-                    ],
+                    variables: {
+                      creditCardInfo: newCreditCardInfo,
+                      name: get(newStripePaymentMethod, 'name'),
+                      account: { id: account.id },
+                    },
                   });
-                  setAddedPaymentMethod(res.data.addStripeCreditCard);
-                  setShowAddPaymentMethod(false);
-                  setLoadingSelectedPaymentMethod(true);
+                  return handleAddPaymentMethodResponse(res.data.addCreditCard);
                 } catch (error) {
                   const errorMsg = getErrorFromGraphqlException(error).message;
-                  createNotification('error', errorMsg);
+                  addToast({
+                    type: TOAST_TYPE.ERROR,
+                    message: errorMsg,
+                  });
+                  setAddingPaymentMethod(false);
                   return false;
                 }
               }}
@@ -327,11 +410,23 @@ const UpdatePaymentMethodPopUp = ({
                       },
                     },
                   });
-                  createNotification('update');
+                  addToast({
+                    type: TOAST_TYPE.SUCCESS,
+                    message: (
+                      <FormattedMessage
+                        id="subscription.createSuccessUpdated"
+                        defaultMessage="Your recurring contribution has been <strong>updated</strong>."
+                        values={I18nFormatters}
+                      />
+                    ),
+                  });
                   setShowPopup(false);
                 } catch (error) {
                   const errorMsg = getErrorFromGraphqlException(error).message;
-                  createNotification('error', errorMsg);
+                  addToast({
+                    type: TOAST_TYPE.ERROR,
+                    message: errorMsg,
+                  });
                   return false;
                 }
               }}
@@ -350,7 +445,6 @@ UpdatePaymentMethodPopUp.propTypes = {
   setMenuState: PropTypes.func,
   router: PropTypes.object.isRequired,
   contribution: PropTypes.object.isRequired,
-  createNotification: PropTypes.func,
   setShowPopup: PropTypes.func,
   loadStripe: PropTypes.func.isRequired,
   account: PropTypes.object.isRequired,

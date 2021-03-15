@@ -12,6 +12,7 @@ export const loggedInAccountExpensePayoutFieldsFragment = gqlV2/* GraphQL */ `
     location {
       address
       country
+      structured
     }
     payoutMethods {
       id
@@ -47,6 +48,7 @@ export const loggedInAccountExpensePayoutFieldsFragment = gqlV2/* GraphQL */ `
           location {
             address
             country
+            structured
           }
           payoutMethods {
             id
@@ -85,6 +87,7 @@ export const expenseHostFields = gqlV2/* GraphQL */ `
     }
     supportedPayoutMethods
     plan {
+      id
       transferwisePayouts
       transferwisePayoutsLimit
     }
@@ -106,6 +109,7 @@ export const expensePageExpenseFieldsFragment = gqlV2/* GraphQL */ `
     createdAt
     invoiceInfo
     requiredLegalDocuments
+    draft
     items {
       id
       incurredAt
@@ -135,6 +139,7 @@ export const expensePageExpenseFieldsFragment = gqlV2/* GraphQL */ `
         isSaved
       }
       ... on AccountWithHost {
+        isApproved
         host {
           id
         }
@@ -143,8 +148,16 @@ export const expensePageExpenseFieldsFragment = gqlV2/* GraphQL */ `
     payeeLocation {
       address
       country
+      structured
     }
     createdByAccount {
+      id
+      slug
+      name
+      type
+      imageUrl
+    }
+    requestedByAccount {
       id
       slug
       name
@@ -171,8 +184,11 @@ export const expensePageExpenseFieldsFragment = gqlV2/* GraphQL */ `
         country
       }
 
-      ... on AccountWithContributions {
-        balance
+      stats {
+        balanceWithBlockedFunds {
+          valueInCents
+          currency
+        }
       }
 
       ... on AccountWithHost {
@@ -187,7 +203,6 @@ export const expensePageExpenseFieldsFragment = gqlV2/* GraphQL */ `
       ... on Organization {
         isHost
         isActive
-        balance
         host {
           ...ExpenseHostFields
         }
@@ -272,10 +287,13 @@ export const expensesListFieldsFragment = gqlV2/* GraphQL */ `
       canReject
       canPay
       canMarkAsUnpaid
+      canSeeInvoiceInfo
     }
     payoutMethod {
       id
       type
+      data
+      isSaved
     }
     payee {
       id
@@ -289,6 +307,7 @@ export const expensesListFieldsFragment = gqlV2/* GraphQL */ `
       id
       type
       slug
+      name
     }
   }
 `;
@@ -296,6 +315,11 @@ export const expensesListFieldsFragment = gqlV2/* GraphQL */ `
 export const expensesListAdminFieldsFragment = gqlV2/* GraphQL */ `
   fragment ExpensesListAdminFieldsFragment on Expense {
     id
+    payoutMethod {
+      id
+      type
+      data
+    }
     items {
       id
       description

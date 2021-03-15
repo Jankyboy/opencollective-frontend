@@ -3,9 +3,9 @@ import PropTypes from 'prop-types';
 import { defineMessages, injectIntl } from 'react-intl';
 
 import Tickets from './edit-collective/sections/Tickets';
-import Button from './Button';
 import Container from './Container';
 import InputField from './InputField';
+import StyledButton from './StyledButton';
 import TimezonePicker from './TimezonePicker';
 
 class EditEventForm extends React.Component {
@@ -183,6 +183,8 @@ class EditEventForm extends React.Component {
                   label="Timezone"
                   selectedTimezone={this.state.event.timezone}
                   onChange={this.handleTimezoneChange}
+                  mx="2px"
+                  my={2}
                 />
               ) : (
                 <InputField
@@ -217,12 +219,14 @@ class EditEventForm extends React.Component {
           )}
         </Container>
         <Container margin="5rem auto 1rem" textAlign="center">
-          <Button
-            className="blue save"
-            label={submitBtnLabel}
+          <StyledButton
+            className="save"
+            buttonStyle="primary"
             onClick={this.handleSubmit}
             disabled={this.state.disabled ? true : loading}
-          />
+          >
+            {submitBtnLabel}
+          </StyledButton>
         </Container>
       </div>
     );

@@ -37,7 +37,7 @@ const DetailColumnHeader = styled.div`
   margin-bottom: 2px;
 `;
 
-const ButtonsContainer = styled.div`
+const ButtonsContainer = styled.div.attrs({ 'data-cy': 'expense-actions' })`
   display: flex;
   flex-wrap: wrap;
   margin-top: 8px;
@@ -127,9 +127,9 @@ const ExpenseBudgetItem = ({
   const nbAttachedFiles = !isAdminView ? 0 : getNbAttachedFiles(expense);
 
   return (
-    <ExpenseContainer>
+    <ExpenseContainer data-cy={`expense-container-${expense?.legacyId}`}>
       <Flex justifyContent="space-between" flexWrap="wrap">
-        <Flex flex="1" minWidth="max(60%, 300px)" maxWidth={[null, '70%']}>
+        <Flex flex="1" minWidth="max(50%, 200px)" maxWidth={[null, '70%']} mr="24px">
           <Box mr={3}>
             {isLoading ? (
               <LoadingPlaceholder width={40} height={40} />
@@ -171,18 +171,18 @@ const ExpenseBudgetItem = ({
                   )}
                 </AutosizeText>
               </ExpenseTitleLink>
-              <P mt="5px" fontSize="12px" color="black.600">
+              <P mt="5px" fontSize="12px" color="black.700">
                 {isAdminView ? (
                   <LinkCollective collective={collective} />
                 ) : (
                   <FormattedMessage
-                    id="Expense.By"
+                    id="CreatedBy"
                     defaultMessage="by {name}"
                     values={{ name: <LinkCollective collective={expense.createdByAccount} /> }}
                   />
                 )}
                 {' • '}
-                <FormattedDate value={expense.createdAt} />
+                <FormattedDate value={expense.createdAt} year="numeric" month="long" day="2-digit" />
                 {isAdminView && (
                   <React.Fragment>
                     {' • '}
@@ -192,7 +192,7 @@ const ExpenseBudgetItem = ({
                       values={{
                         balance: (
                           <FormattedMoneyAmount
-                            amount={collective.balance}
+                            amount={collective.stats?.balance?.valueInCents}
                             currency={collective.currency}
                             amountStyles={{ color: 'black.700' }}
                           />
@@ -212,7 +212,7 @@ const ExpenseBudgetItem = ({
             ) : (
               <React.Fragment>
                 {showAmountSign && <TransactionSign isCredit={isInverted} />}
-                <Span color="black.500" fontSize="15px">
+                <Span color="black.700" fontSize="16px">
                   <FormattedMoneyAmount amount={expense.amount} currency={expense.currency} precision={2} />
                 </Span>
               </React.Fragment>
@@ -327,8 +327,12 @@ ExpenseBudgetItem.propTypes = {
   view: PropTypes.oneOf(['public', 'admin']),
   collective: PropTypes.shape({
     slug: PropTypes.string.isRequired,
-    balance: PropTypes.number,
     currency: PropTypes.string,
+    stats: PropTypes.shape({
+      balance: PropTypes.shape({
+        valueInCents: PropTypes.number,
+      }),
+    }),
     parent: PropTypes.shape({
       slug: PropTypes.string.isRequired,
     }),
@@ -361,6 +365,7 @@ ExpenseBudgetItem.propTypes = {
     createdByAccount: PropTypes.shape({
       type: PropTypes.string.isRequired,
       slug: PropTypes.string.isRequired,
+      name: PropTypes.string.isRequired,
     }),
     /** If available, this `account` will be used to link expense in place of the `collective` */
     account: PropTypes.shape({

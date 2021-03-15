@@ -5,17 +5,14 @@ import { defineMessages, FormattedMessage, injectIntl } from 'react-intl';
 
 import { API_V2_CONTEXT } from '../../../lib/graphql/helpers';
 
-import { Dimensions } from '../_constants';
 import Container from '../../Container';
 import { Box } from '../../Grid';
-import I18nFormatters from '../../I18nFormatters';
 import LoadingPlaceholder from '../../LoadingPlaceholder';
 import MessageBox from '../../MessageBox';
 import { recurringContributionsQuery } from '../../recurring-contributions/graphql/queries';
 import RecurringContributionsContainer from '../../recurring-contributions/RecurringContributionsContainer';
 import StyledFilters from '../../StyledFilters';
-import TemporaryNotification from '../../TemporaryNotification';
-import { P } from '../../Text';
+import { Dimensions } from '../_constants';
 import ContainerSectionContent from '../ContainerSectionContent';
 import SectionTitle from '../SectionTitle';
 
@@ -62,32 +59,11 @@ class SectionRecurringContributions extends React.Component {
 
   constructor(props) {
     super(props);
-    this.state = { filter: 'ACTIVE', notification: false, notificationType: null, notificationText: null };
+    this.state = { filter: 'ACTIVE' };
   }
-
-  createNotification = (type, error) => {
-    this.setState({ notification: true });
-    if (type === 'error') {
-      this.setState({ notificationType: 'error' });
-      this.setState({ notificationText: error });
-    } else {
-      this.setState({ notificationType: type });
-    }
-    window.scrollTo(0, 0);
-  };
-
-  dismissNotification = () => {
-    this.setState(state => ({
-      ...state.filter,
-      notification: false,
-      notificationType: null,
-      notificationText: null,
-    }));
-  };
 
   render() {
     const { data, intl } = this.props;
-    const { notification, notificationType, notificationText } = this.state;
 
     const filters = ['ACTIVE', 'MONTHLY', 'YEARLY', 'CANCELLED'];
 
@@ -110,45 +86,16 @@ class SectionRecurringContributions extends React.Component {
     const recurringContributions = collective && collective.orders;
 
     return (
-      <Box pt={5} pb={3}>
-        {notification && (
-          <TemporaryNotification
-            onDismiss={this.dismissNotification}
-            type={notificationType === 'error' ? 'error' : 'default'}
-          >
-            {notificationType === 'activate' && (
-              <FormattedMessage
-                id="subscription.createSuccessActivate"
-                defaultMessage="Recurring contribution <strong>activated</strong>! Woohoo! 🎉"
-                values={I18nFormatters}
-              />
-            )}
-            {notificationType === 'cancel' && (
-              <FormattedMessage
-                id="subscription.createSuccessCancel"
-                defaultMessage="Your recurring contribution has been <strong>cancelled</strong>."
-                values={I18nFormatters}
-              />
-            )}
-            {notificationType === 'update' && (
-              <FormattedMessage
-                id="subscription.createSuccessUpdated"
-                defaultMessage="Your recurring contribution has been <strong>updated</strong>."
-                values={I18nFormatters}
-              />
-            )}
-            {notificationType === 'error' && <P>{notificationText}</P>}
-          </TemporaryNotification>
-        )}
+      <Box pb={4}>
         <ContainerSectionContent>
-          <SectionTitle textAlign="left" mb={1}>
+          <SectionTitle textAlign="left" mb={4} fontSize={['20px', '24px', '32px']} color="black.700">
             <FormattedMessage
               id="CollectivePage.SectionRecurringContributions.Title"
               defaultMessage="Recurring Contributions"
             />
           </SectionTitle>
         </ContainerSectionContent>
-        <Box mt={4} mx="auto" maxWidth={Dimensions.MAX_SECTION_WIDTH}>
+        <Box mx="auto" maxWidth={Dimensions.MAX_SECTION_WIDTH}>
           <StyledFilters
             filters={filters}
             getLabel={key => intl.formatMessage(I18nFilters[key])}
@@ -164,7 +111,6 @@ class SectionRecurringContributions extends React.Component {
             recurringContributions={recurringContributions}
             account={collective}
             filter={this.state.filter}
-            createNotification={this.createNotification}
           />
         </Container>
       </Box>
@@ -173,9 +119,14 @@ class SectionRecurringContributions extends React.Component {
 }
 
 const getData = graphql(recurringContributionsQuery, {
-  options: {
+  options: props => ({
     context: API_V2_CONTEXT,
-  },
+    variables: getRecurringContributionsSectionQueryVariables(props.slug),
+  }),
 });
+
+export const getRecurringContributionsSectionQueryVariables = slug => {
+  return { slug };
+};
 
 export default injectIntl(getData(SectionRecurringContributions));

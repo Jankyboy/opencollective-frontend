@@ -57,7 +57,7 @@ const ContributorName = styled.div`
   font-size: 12px;
   line-height: 18px;
   font-weight: bold;
-  color: #4e5052;
+  color: ${props => props.theme.colors.black[800]};
   letter-spacing: -0.4px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -74,6 +74,13 @@ const getFlexBasisForCol = (nbContributors, totalContributors) => {
   const maxPercentage = 0.75;
   const percentageNbContributors = nbContributors / totalContributors;
   const width = Math.min(percentageNbContributors - baseSpaceBetween, maxPercentage);
+
+  // If one of the two blocks has less contributors but still two columns, we
+  // force the size two make sure both columns are displayed
+  if (percentageNbContributors <= 0.45 && nbContributors > 5) {
+    return '40%';
+  }
+
   return `${Math.trunc(width * 100)}%`;
 };
 
@@ -110,7 +117,7 @@ const ContributorsBlock = ({ title, contributors, totalNbContributors, currency,
                   )}
                 </ContributorName>
               </LinkContributor>
-              <P color="black.500" fontSize="10px" lineHeight="14px">
+              <P color="black.700" fontSize="10px" lineHeight="14px">
                 {contributor.totalAmountDonated ? (
                   <FormattedMessage
                     id="TotalDonatedSince"
