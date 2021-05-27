@@ -204,7 +204,7 @@
     "shx": "^0.3.2",
     "style-loader": "^1.2.1",
     "url-loader": "^4.1.0",
-    "webpack-bundle-analyzer": "^3.8.0"
+    "webpack-bundle-analyzer": "^4.0.0"
   },
   "jest": {
     "moduleNameMapper": {
